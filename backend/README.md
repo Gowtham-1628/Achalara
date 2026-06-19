@@ -1,75 +1,28 @@
-# Portfolio Management System - Backend
+# Portfolio Management System — Backend
 
-A FastAPI-based backend for managing investment portfolios, client accounts, strategies, and performance tracking.
+A FastAPI backend for multi-client, multi-strategy investment portfolio management.
 
 ## Features
 
-- **Multi-Client Multi-Strategy Support**: Each client can have multiple accounts and investment strategies
-- **Trade Ingestion**: Import trades from CSV or sync directly from a public Google Sheet
-- **Position Tracking**: quantity-matched round-trips (each sell paired to a same-quantity buy), open/closed positions, realized & unrealized P&L, and real-time portfolio value
-- **Performance Metrics**: Money Weighted Return (MWR) and Time Weighted Return (TWR)
-- **Historical Analysis**: Track performance across custom date ranges
-- **Deduplication**: Automatic duplicate detection on every import and sync
-- **RESTful API**: Full OpenAPI documentation at `/docs`
-
-## Tech Stack
-
-- **Framework**: FastAPI
-- **Database**: PostgreSQL + SQLAlchemy 2.0 ORM
-- **Migrations**: Alembic
-- **Validation**: Pydantic v2
-- **Testing**: Pytest + httpx (SQLite in-memory)
-- **Data Integration**: Public Google Sheets via CSV export (no credentials required)
+- **Client → Account → Sleeve hierarchy** — each sleeve is one strategy running in one account
+- **Trade ingestion** — CSV upload or live Google Sheets sync (no credentials needed)
+- **Position tracking** — open positions, closed round-trips, realized & unrealized P&L
+- **Performance metrics** — MWR (IRR) and TWR (geometric linking) at sleeve / account / client / strategy level
+- **Deduplication** — safe to re-import CSV or re-run a sync; duplicates are always skipped
+- **Scheduler** — APScheduler daily Google Sheets sync via registered `SheetSyncConfig`
 
 ## Quick Start
 
-### Prerequisites
-
-- Python 3.10+
-- PostgreSQL 12+
-
-### Installation
-
-1. **Create virtual environment**
-
 ```bash
 cd backend
-python3 -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+cp .env.example .env   # set DATABASE_URL at minimum
+
+./infra.sh up -d       # start Colima → Docker → Postgres+Redis → migrations → app
+./infra.sh status      # verify all layers
 ```
 
-2. **Install dependencies**
-
-```bash
-pip install -r requirements.txt
-```
-
-3. **Setup environment variables**
-
-```bash
-cp .env.example .env
-# Edit .env — set DATABASE_URL at minimum
-```
-
-4. **Create PostgreSQL database**
-
-```bash
-createdb pms_dev
-```
-
-5. **Run database migrations**
-
-```bash
-alembic upgrade head
-```
-
-6. **Start the server**
-
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-API available at `http://localhost:8000` — Swagger UI at `http://localhost:8000/docs`
+Swagger UI: `http://localhost:8000/docs`  
+See [INFRA.md](INFRA.md) for the full runbook and [GETTING_STARTED.md](GETTING_STARTED.md) for a guided first run.
 
 ## API Endpoints
 
@@ -79,8 +32,9 @@ API available at `http://localhost:8000` — Swagger UI at `http://localhost:800
 |--------|----------|-------------|
 | `POST` | `/api/v1/clients/` | Create client |
 | `GET`  | `/api/v1/clients/{client_id}` | Get client |
-| `GET`  | `/api/v1/clients/{client_id}/performance` | Aggregated MWR/TWR across all strategies |
-| `GET`  | `/api/v1/clients/{client_id}/positions` | All positions merged across all strategies |
+| `GET`  | `/api/v1/clients/{client_id}/performance` | Aggregated MWR/TWR across all sleeves (`?start_date=&end_date=`) |
+| `GET`  | `/api/v1/clients/{client_id}/performance/monthly` | Month-on-month return breakdown |
+| `GET`  | `/api/v1/clients/{client_id}/positions` | Merged positions across all sleeves |
 | `GET`  | `/api/v1/clients/{client_id}/trades` | All trades with pagination (`?skip=0&limit=100`) |
 
 ### Accounts
@@ -90,54 +44,66 @@ API available at `http://localhost:8000` — Swagger UI at `http://localhost:800
 | `POST` | `/api/v1/clients/{client_id}/accounts` | Create account |
 | `GET`  | `/api/v1/clients/{client_id}/accounts` | List accounts |
 | `GET`  | `/api/v1/clients/{client_id}/accounts/{account_id}` | Get account |
+| `GET`  | `.../accounts/{account_id}/performance` | Aggregated MWR/TWR for the account |
+| `GET`  | `.../accounts/{account_id}/performance/monthly` | Month-on-month return breakdown |
+| `GET`  | `.../accounts/{account_id}/positions` | Merged positions across account sleeves |
 
-### Strategies
+### Sleeves
 
-All strategy routes are nested under `/api/v1/clients/{client_id}/accounts/{account_id}/`:
+Sleeves are nested under `/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/`:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `.../strategies` | Create strategy |
-| `GET`  | `.../strategies` | List strategies |
-| `GET`  | `.../strategies/{strategy_id}/performance` | MWR/TWR (`?start_date=&end_date=`) |
-| `GET`  | `.../strategies/{strategy_id}/positions` | Open positions with unrealized P&L |
-| `GET`  | `.../strategies/{strategy_id}/positions/closed` | Closed positions with realized gains |
-| `GET`  | `.../strategies/{strategy_id}/trades` | Trade history with pagination |
-| `POST` | `.../strategies/{strategy_id}/market-prices` | Manually update prices |
-| `POST` | `.../strategies/{strategy_id}/fetch-market-prices` | Fetch prices from Webull |
+| `POST` | `.../sleeves` | Apply a strategy to an account (create sleeve) |
+| `GET`  | `.../sleeves` | List sleeves |
+| `GET`  | `.../sleeves/{sleeve_id}` | Get sleeve |
+| `GET`  | `.../sleeves/{sleeve_id}/performance` | MWR/TWR (`?start_date=&end_date=`) |
+| `GET`  | `.../sleeves/{sleeve_id}/performance/monthly` | Month-on-month return breakdown |
+| `GET`  | `.../sleeves/{sleeve_id}/positions` | Open positions with unrealized P&L |
+| `GET`  | `.../sleeves/{sleeve_id}/positions/closed` | Closed positions with realized gains |
+| `GET`  | `.../sleeves/{sleeve_id}/trades` | Trade history with pagination |
+| `POST` | `.../sleeves/{sleeve_id}/market-prices` | Manually update prices `{ "prices": { "AAPL": 189.5 } }` |
+| `POST` | `.../sleeves/{sleeve_id}/fetch-market-prices` | Fetch prices from Webull |
+
+### Strategies
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/v1/strategies/` | Create a firm-wide strategy definition (409 on duplicate name) |
+| `GET`  | `/api/v1/strategies/` | List all strategies |
+| `GET`  | `/api/v1/strategies/{strategy_id}` | Get strategy |
+| `GET`  | `/api/v1/strategies/{strategy_id}/performance` | Roll-up MWR/TWR across all sleeves for this strategy |
+| `GET`  | `/api/v1/strategies/{strategy_id}/performance/monthly` | Month-on-month return breakdown |
 
 ### Trades
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/trades/` | Create a single trade |
+| `POST` | `/api/v1/trades/` | Create a single trade (requires `sleeve_id`) |
 
 ### Admin
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/v1/admin/import-historical` | Import trades from CSV upload (`?mode=VALIDATE\|IMPORT`) |
+| `POST` | `/api/v1/admin/import-historical` | Import trades from CSV upload (`?mode=VALIDATE\|IMPORT&client_id=...`) |
 | `POST` | `/api/v1/admin/sync-daily` | Sync trades from a public Google Sheet |
-| `GET`  | `/api/v1/admin/sync-logs` | View import/sync audit logs |
+| `GET`  | `/api/v1/admin/sync-logs` | Import/sync audit logs |
+| `POST` | `/api/v1/admin/sync-configs` | Register a sheet → sleeve mapping for daily auto-sync |
+| `GET`  | `/api/v1/admin/sync-configs` | List sync configs (`?client_id=` to filter) |
+| `PATCH`| `/api/v1/admin/sync-configs/{config_id}` | Enable/disable a sync config |
+| `DELETE`| `/api/v1/admin/sync-configs/{config_id}` | Remove a sync config |
+
+Full parameter details are in [../openapi.yaml](../openapi.yaml) and at `/docs`.
 
 ## Google Sheets Integration
 
-The sync-daily endpoint fetches data from any publicly shared Google Sheet (no API credentials needed).
+The sync endpoints fetch any publicly shared Google Sheet without credentials.
 
 **Sheet requirements:**
-- Must be shared as "Anyone with the link can view"
-- First row must be a header row with these columns: `Date`, `Symbol`, `Action`, `Quantity`, `Price`, `Commission`, `Strategy`, `Notes`
-- `Date` can be `YYYY-MM-DD` or `YYYY/MM/DD` — both are normalized automatically
-- `Action` can be `Buy`/`Sell` or `BUY`/`SELL` — case is normalized automatically
-
-**Trade sheet:**
-
-| Field | Value |
-|-------|-------|
-| Sheet ID | `12aXyVYCGtpmc44pBAdmKu7U6igT91cI93AT4vnJseM0` |
-| Link | [Google Sheet](https://docs.google.com/spreadsheets/d/12aXyVYCGtpmc44pBAdmKu7U6igT91cI93AT4vnJseM0/edit?usp=drive_link) |
-| Rows | 617 trades (Mar 2025 – May 2026) |
-| Tab GID | `0` (first tab) |
+- Shared as "Anyone with the link can view"
+- Header row with columns: `Date`, `Symbol`, `Action`, `Quantity`, `Price`, `Commission`, `Strategy`, `Account`, `Notes`
+- `Date`: `YYYY-MM-DD` or `YYYY/MM/DD` — both accepted
+- `Action`: `Buy`/`Sell` or `BUY`/`SELL` — case is normalized
 
 **Example sync call:**
 
@@ -145,40 +111,43 @@ The sync-daily endpoint fetches data from any publicly shared Google Sheet (no A
 curl -X POST "http://localhost:8000/api/v1/admin/sync-daily" \
   -G \
   --data-urlencode "client_id=<your-client-id>" \
-  --data-urlencode "strategy_id=<your-strategy-id>" \
-  --data-urlencode "sheet_id=12aXyVYCGtpmc44pBAdmKu7U6igT91cI93AT4vnJseM0" \
-  --data-urlencode "range_name=0"
+  --data-urlencode "sleeve_id=<your-sleeve-id>" \
+  --data-urlencode "sheet_id=<your-google-sheet-id>" \
+  --data-urlencode "range_name=Sheet1"
 ```
 
-Running the same sync twice is safe — duplicate trades are automatically skipped.
+Re-running the same sync is safe — duplicate rows are skipped via `google_sheet_row_id`.
 
 ## CSV Import Format
 
-When using `POST /api/v1/admin/import-historical`, the CSV must have these columns:
-
 ```
-Date,Symbol,Action,Quantity,Price,Commission,Strategy,Notes
-2025-03-17,FCG,BUY,41,24.28,0,Thematic ETFs,Initial purchase
+Date,Symbol,Action,Quantity,Price,Commission,Strategy,Account,Notes
+2025-03-17,FCG,BUY,41,24.28,0,Thematic ETFs,Taxable,Initial purchase
 ```
 
-Use `?mode=VALIDATE` first to dry-run without persisting, then `?mode=IMPORT` to persist.
+```bash
+# Dry-run first
+curl -X POST "http://localhost:8000/api/v1/admin/import-historical?client_id=<id>&mode=VALIDATE" \
+  -F "file=@trades.csv"
+
+# Then persist
+curl -X POST "http://localhost:8000/api/v1/admin/import-historical?client_id=<id>&mode=IMPORT" \
+  -F "file=@trades.csv"
+```
+
+Omit `sleeve_id` to let the importer auto-route rows by Account + Strategy columns.
 
 ## Testing
 
-Run from the repo root (`pms/`):
-
 ```bash
-# All tests
+# All tests (no Docker needed — uses in-memory SQLite)
 backend/venv/bin/pytest backend/tests -v
 
 # With coverage
 backend/venv/bin/pytest backend/tests --cov=backend/app
 
-# Specific file
-backend/venv/bin/pytest backend/tests/test_google_sheets.py -v
-
-# Google Sheets integration tests only
-backend/venv/bin/pytest backend/tests/test_google_sheets.py -v
+# Single file
+backend/venv/bin/pytest backend/tests/test_sleeves.py -v
 ```
 
 ## Project Structure
@@ -187,42 +156,65 @@ backend/venv/bin/pytest backend/tests/test_google_sheets.py -v
 backend/
 ├── app/
 │   ├── api/
-│   │   ├── routes/          # Thin route handlers (clients, accounts, strategies, trades, admin)
+│   │   ├── routes/          # Thin route handlers
+│   │   │   ├── clients.py
+│   │   │   ├── accounts.py
+│   │   │   ├── sleeves.py
+│   │   │   ├── strategies.py
+│   │   │   ├── trades.py
+│   │   │   └── admin.py
 │   │   └── schemas/         # Pydantic request/response models
 │   ├── models/              # SQLAlchemy ORM models
-│   ├── services/            # Business logic (MWR, TWR, portfolio calc, import, Webull, Sheets)
-│   ├── db/                  # Database engine and session factory
-│   ├── config.py            # Pydantic Settings (reads backend/.env)
-│   └── main.py              # FastAPI app entry point
+│   │   ├── client.py
+│   │   ├── account.py
+│   │   ├── sleeve.py        # account × strategy join; owns trades/positions
+│   │   ├── strategy.py
+│   │   ├── trade.py
+│   │   ├── position.py
+│   │   └── sync_log.py
+│   ├── services/            # Business logic
+│   │   ├── performance_service.py
+│   │   ├── mwr_calculation.py
+│   │   ├── twr_calculation.py
+│   │   ├── portfolio_calculation.py
+│   │   ├── trade_ingestion.py
+│   │   ├── trade_import.py
+│   │   ├── google_sheets_sync.py
+│   │   ├── daily_sync.py
+│   │   ├── scheduler.py
+│   │   ├── market_price.py
+│   │   └── webull_market_data.py
+│   ├── db/database.py       # Sync engine + SessionLocal
+│   ├── main.py              # FastAPI entry point + lifespan
+│   └── config.py            # Settings (reads .env)
 ├── migrations/              # Alembic migration scripts
-├── tests/                   # Test suite (46 tests)
-├── requirements.txt
-└── .env.example
+├── tests/                   # pytest suite
+├── bruno/                   # Bruno API collection
+├── docker-compose.yml       # Postgres + Redis
+├── infra.sh                 # Stack manager
+├── openapi.yaml             # OpenAPI 3.0 spec
+└── requirements.txt
 ```
 
 ## Environment Variables
 
 ```env
-DATABASE_URL=postgresql://user:password@localhost:5432/pms_dev
+DATABASE_URL=postgresql://postgres:dev123@localhost:5432/pms_dev
+REDIS_URL=redis://localhost:6379/0
 WEBULL_APP_KEY=your_webull_key
 WEBULL_APP_SECRET=your_webull_secret
+SCHEDULER_ENABLED=true
 PYTHON_ENV=development
 LOG_LEVEL=DEBUG
-PORT=8000
 ```
-
-`GOOGLE_SHEETS_CREDENTIALS_FILE` is no longer needed — sheets are fetched publicly via CSV export.
 
 ## Development
 
-- Format: `black app/`
-- Lint: `flake8 app/`
-- Schema changes: always use `alembic revision --autogenerate -m "description"`
+```bash
+black app/                   # format
+flake8 app/                  # lint
+alembic revision --autogenerate -m "description"   # new migration
+alembic upgrade head         # apply migrations
+```
 
-## Next Steps
-
-- [ ] Alembic initial migration (`alembic revision --autogenerate -m "initial schema"`)
-- [ ] JWT authentication
-- [ ] APScheduler for automated daily Google Sheets sync
-- [ ] Redis job queue integration
-- [ ] React frontend application
+See [DATA_MODEL.md](DATA_MODEL.md) for the authoritative schema reference.

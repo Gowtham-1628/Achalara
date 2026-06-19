@@ -24,21 +24,26 @@ market prices via the Webull API.
 ## Repository layout
 
 ```
-pms/
+Achalara/
 ├── README.md            # You are here
-├── CLAUDE.md            # Architecture + coding conventions (source of truth)
+├── CLAUDE.md            # Shared context (Sleeve model, monorepo layout)
+├── openapi.yaml         # OpenAPI 3.0 spec — API contract between backend and frontend
 ├── ROADMAP.md           # Phase-by-phase plan
 ├── idea.md              # Project vision
-└── backend/
-    ├── app/             # FastAPI app: routes (thin) → services (logic) → models
-    ├── migrations/      # Alembic migrations
-    ├── tests/           # pytest suite (in-memory SQLite)
-    ├── bruno/           # Bruno API collection for manual/CLI testing
-    ├── docker-compose.yml   # Postgres + Redis
-    ├── infra.sh         # Stack manager (see INFRA.md)
-    ├── INFRA.md         # Infrastructure runbook
-    ├── GETTING_STARTED.md   # Step-by-step first-run guide
-    └── README.md        # Backend API reference
+├── backend/
+│   ├── CLAUDE.md        # Backend conventions (FastAPI, SQLAlchemy, testing)
+│   ├── app/             # FastAPI app: routes (thin) → services (logic) → models
+│   ├── migrations/      # Alembic migrations
+│   ├── tests/           # pytest suite (in-memory SQLite)
+│   ├── bruno/           # Bruno API collection for manual/CLI testing
+│   ├── docker-compose.yml   # Postgres + Redis
+│   ├── infra.sh         # Stack manager (see INFRA.md)
+│   ├── INFRA.md         # Infrastructure runbook
+│   ├── GETTING_STARTED.md   # Step-by-step first-run guide
+│   └── README.md        # Backend API reference
+└── frontend/
+    ├── CLAUDE.md        # Frontend conventions (React, TypeScript, API client)
+    └── ...              # React + TypeScript app (Phase 5 — not yet scaffolded)
 ```
 
 ## Quick start
@@ -88,14 +93,13 @@ npm install -g @usebruno/cli
 cd backend/bruno && bru run --env Local
 ```
 
-## Action items / future work
-
-Tracked in detail in [.claude/review-the-project-and-vast-puddle.md](.claude/review-the-project-and-vast-puddle.md). Current open items:
+## Open items / future work
 
 - **Rotate the Webull API secrets** in `backend/.env` — they are live/valid and should not stay in a plaintext file long-term (keep only in the git-ignored `.env`).
-- **Exercise the live Google Sheets sync** (`sync-daily` + a `SheetSyncConfig`) once Google credentials are available.
-- **Decide symbol storage** for exchange-prefixed tickers: trades keep the original `BATS:IGE`; Webull lookups strip the prefix to `IGE`. Optionally normalize on import too.
-- **Tech debt:** migrate Pydantic `class Config` → `ConfigDict`; replace the Postgres-only `DISTINCT ON` usage in `twr_calculation.py`.
+- **Exercise the live Google Sheets sync** end-to-end — register a `SheetSyncConfig` and run `sync-daily`.
+- **Decide symbol normalization** for exchange-prefixed tickers: trades store `BATS:IGE`; Webull lookups strip the prefix to `IGE`. Optionally normalize on import too.
+- **Tech debt:** migrate Pydantic `class Config` → `model_config = ConfigDict(...)`; replace the Postgres-only `DISTINCT ON` in `twr_calculation.py`.
+- **Frontend (Phase 5)** — React + TypeScript app. See [ROADMAP.md](ROADMAP.md) for the full plan.
 
 ## Conventions
 

@@ -1,67 +1,46 @@
-# Getting Started - Portfolio Management System
+# Getting Started — Portfolio Management System
 
 ## Prerequisites
 
 - Python 3.10+
-- Docker & Docker Compose (for PostgreSQL)
+- Docker & Docker Compose (for PostgreSQL + Redis)
 - Git
 
-## Quick Start (5 minutes)
+## Quick Start
 
-### Step 1: Navigate to Backend Directory
+### Step 1: Navigate to the backend directory
 
 ```bash
-cd /Users/sai/Documents/Github\ 2/pms/backend
+cd "/Users/sai/Documents/Github 2/Achalara/backend"
 ```
 
-### Step 2: Run Setup Script
+### Step 2: Set up the environment
 
 ```bash
-bash setup.sh
-```
-
-This will:
-
-- Create Python virtual environment
-- Install all dependencies
-- Create .env file
-- Check database connection
-
-### Step 3: Start PostgreSQL with Docker
-
-```bash
-docker-compose up -d
-```
-
-Verify it's running:
-
-```bash
-docker ps
-```
-
-### Step 4: Activate Virtual Environment
-
-```bash
+python3 -m venv venv
 source venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edit .env — set DATABASE_URL at minimum
 ```
 
-### Step 5: Start the Server
+### Step 3: Start the full stack
 
 ```bash
-uvicorn app.main:app --reload --port 8000
+./infra.sh up -d
 ```
 
-You should see:
+This starts Colima (if needed) → Docker → Postgres + Redis → runs Alembic migrations → starts the app on port 8000.
 
+Check all layers are healthy:
+
+```bash
+./infra.sh status
 ```
-Uvicorn running on http://127.0.0.1:8000
-```
 
-### Step 6: Open API Documentation
+### Step 4: Open API Documentation
 
-Visit: **http://localhost:8000/docs**
-
-You'll see Swagger UI with all API endpoints documented and ready to test.
+Visit **http://localhost:8000/docs** — Swagger UI with all endpoints ready to test.
 
 ---
 
@@ -72,38 +51,46 @@ You'll see Swagger UI with all API endpoints documented and ready to test.
 ```bash
 curl -X POST "http://localhost:8000/api/v1/clients/" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "My Fund",
-    "email": "fund@example.com"
-  }'
+  -d '{"name": "My Fund", "email": "fund@example.com"}'
 ```
 
-### Create a Strategy
+### Create a Strategy (firm-wide definition)
 
 ```bash
-# Get client_id from previous response
-curl -X POST "http://localhost:8000/api/v1/YOUR_CLIENT_ID/strategies" \
+curl -X POST "http://localhost:8000/api/v1/strategies/" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Growth Portfolio",
-    "description": "Aggressive growth strategy"
-  }'
+  -d '{"name": "Growth", "description": "Aggressive growth strategy"}'
 ```
 
-### Create a Trade
+### Create an Account (under the client)
 
 ```bash
-# Use strategy_id from previous response
+curl -X POST "http://localhost:8000/api/v1/clients/<client_id>/accounts" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Taxable Brokerage"}'
+```
+
+### Create a Sleeve (apply strategy to an account)
+
+```bash
+curl -X POST "http://localhost:8000/api/v1/clients/<client_id>/accounts/<account_id>/sleeves" \
+  -H "Content-Type: application/json" \
+  -d '{"strategy_id": "<strategy_id>"}'
+```
+
+### Create a Trade (requires sleeve_id)
+
+```bash
 curl -X POST "http://localhost:8000/api/v1/trades/" \
   -H "Content-Type: application/json" \
   -d '{
-    "strategy_id": "YOUR_STRATEGY_ID",
+    "sleeve_id": "<sleeve_id>",
     "trade_date": "2026-05-15",
     "symbol": "AAPL",
     "action": "BUY",
     "quantity": 100,
     "price": 150.50,
-    "commission": 10.00,
+    "commission": 0,
     "notes": "Initial purchase"
   }'
 ```
@@ -112,48 +99,30 @@ curl -X POST "http://localhost:8000/api/v1/trades/" \
 
 ## Running Tests
 
+Tests use an in-memory SQLite database — no Docker needed:
+
 ```bash
-# Run all tests
-pytest
+# All tests
+backend/venv/bin/pytest backend/tests -v
 
-# Run with verbose output
-pytest -v
+# With coverage
+backend/venv/bin/pytest backend/tests --cov=backend/app
 
-# Run with coverage report
-pytest --cov=app
-
-# Run specific test file
-pytest tests/test_validators.py
+# Single file
+backend/venv/bin/pytest backend/tests/test_sleeves.py -v
 ```
 
 ---
 
 ## Development Commands
 
-### Format Code
-
 ```bash
-black app/
-```
+black app/          # format
+flake8 app/         # lint
 
-### Lint Code
-
-```bash
-flake8 app/
-```
-
-### Initialize Alembic Migrations (if not done)
-
-```bash
-alembic init migrations
-alembic revision --autogenerate -m "Initial schema"
+# Database migrations
+alembic revision --autogenerate -m "description"
 alembic upgrade head
-```
-
-### Check Database Connection
-
-```bash
-python3 -c "from app.db.database import engine; print(engine.connect()); print('✓ Database connected')"
 ```
 
 ---
@@ -161,206 +130,93 @@ python3 -c "from app.db.database import engine; print(engine.connect()); print('
 ## Project Structure
 
 ```
-pms/backend/
+backend/
 ├── app/
 │   ├── api/
-│   │   ├── routes/          # API endpoints
+│   │   ├── routes/          # Thin route handlers
 │   │   │   ├── clients.py
+│   │   │   ├── accounts.py
+│   │   │   ├── sleeves.py   # trades, positions, performance, market prices
 │   │   │   ├── strategies.py
 │   │   │   ├── trades.py
-│   │   │   └── admin.py
-│   │   └── schemas/         # Request/response models
+│   │   │   └── admin.py     # import, sync, sync-configs, sync-logs
+│   │   └── schemas/         # Pydantic request/response models
 │   ├── models/              # SQLAlchemy ORM models
 │   │   ├── client.py
+│   │   ├── account.py
+│   │   ├── sleeve.py        # account × strategy join; owns trades/positions
 │   │   ├── strategy.py
 │   │   ├── trade.py
 │   │   ├── position.py
 │   │   └── sync_log.py
 │   ├── services/            # Business logic
-│   │   ├── trade_ingestion.py
-│   │   ├── google_sheets_sync.py
-│   │   ├── portfolio_calculation.py
-│   │   ├── mwr_calculation.py
-│   │   └── twr_calculation.py
-│   ├── db/
-│   │   └── database.py      # Database connection
-│   ├── main.py              # FastAPI app entry point
-│   └── config.py            # Configuration
-├── tests/                   # Test suite
-├── migrations/              # Alembic database migrations
-├── requirements.txt         # Python dependencies
-├── docker-compose.yml       # PostgreSQL + Redis
-├── .env                     # Environment variables
-└── README.md               # Full documentation
+│   ├── db/database.py       # Sync engine + SessionLocal
+│   ├── main.py              # FastAPI entry point + scheduler lifespan
+│   └── config.py            # Settings (reads .env)
+├── migrations/              # Alembic scripts
+├── tests/                   # pytest suite (SQLite in-memory)
+├── bruno/                   # Bruno API collection for manual testing
+├── docker-compose.yml       # Postgres + Redis
+├── infra.sh                 # Stack manager
+└── openapi.yaml             # OpenAPI 3.0 spec (import into Postman/Swagger)
 ```
 
 ---
 
-## Environment Configuration
-
-Edit `.env` to customize:
+## Environment Variables
 
 ```env
 DATABASE_URL=postgresql://postgres:dev123@localhost:5432/pms_dev
-GOOGLE_SHEETS_API_KEY=your_api_key
-GOOGLE_SHEETS_CREDENTIALS_FILE=./credentials.json
+REDIS_URL=redis://localhost:6379/0
+WEBULL_APP_KEY=your_webull_key
+WEBULL_APP_SECRET=your_webull_secret
+SCHEDULER_ENABLED=true
 PYTHON_ENV=development
 LOG_LEVEL=DEBUG
-PORT=8000
 ```
 
 ---
 
 ## Stopping Services
 
-### Stop the Server
-
 ```bash
-# Press Ctrl+C in the terminal
-```
-
-### Stop PostgreSQL & Redis
-
-```bash
-docker-compose down
-```
-
-### Remove All Containers and Data (Fresh Start)
-
-```bash
-docker-compose down -v
+./infra.sh down          # stop app + Docker containers
+./infra.sh down -v       # also wipe Postgres data (fresh start)
 ```
 
 ---
 
 ## Troubleshooting
 
-### PostgreSQL Connection Error
-
-```
-Error: could not connect to server: Connection refused
-```
-
-**Solution**: Make sure Docker is running and PostgreSQL is started
+### PostgreSQL connection error
 
 ```bash
-docker-compose up -d
-docker ps  # Check if postgres is running
+./infra.sh status        # check which layer is down
+docker-compose up -d     # start Postgres + Redis directly
 ```
 
-### Port Already in Use
-
-```
-Error: Address already in use
-```
-
-**Solution**: Change port or kill process using it
+### Port 8000 already in use
 
 ```bash
-# Use different port
-uvicorn app.main:app --reload --port 8001
-
-# Or find and kill process on 8000
 lsof -i :8000
 kill -9 <PID>
+# or start on a different port:
+uvicorn app.main:app --reload --port 8001
 ```
 
-### Virtual Environment Issues
+### Virtual environment issues
 
 ```bash
-# Deactivate and reactivate
 deactivate
 source venv/bin/activate
-
-# Reinstall dependencies
 pip install -r requirements.txt
 ```
 
-### Module Import Errors
-
-```bash
-# Ensure you're in the correct directory
-cd /Users/sai/Documents/Github\ 2/pms/backend
-
-# Ensure venv is activated
-source venv/bin/activate
-```
-
 ---
 
-## Next Phase: Historical Data Import
+## Success Checklist
 
-When ready to implement:
-
-1. **Export Google Sheet as CSV**
-   - File → Download → CSV
-
-2. **Test Import Endpoint**
-
-   ```bash
-   curl -X POST "http://localhost:8000/api/v1/admin/import-historical" \
-     -H "accept: application/json" \
-     -F "client_id=YOUR_CLIENT_ID" \
-     -F "file=@path/to/trades.csv" \
-     -F "mode=VALIDATE"
-   ```
-
-3. **If Validation Passes**
-   ```bash
-   # Change mode to IMPORT
-   -F "mode=IMPORT"
-   ```
-
----
-
-## API Endpoints Reference
-
-### Clients
-
-- `POST /api/v1/clients` - Create client
-- `GET /api/v1/clients/{client_id}` - Get client details
-- `GET /api/v1/clients/{client_id}/performance` - Get performance
-- `GET /api/v1/clients/{client_id}/positions` - Get all positions
-- `GET /api/v1/clients/{client_id}/trades` - Get all trades
-
-### Strategies
-
-- `POST /api/v1/{client_id}/strategies` - Create strategy
-- `GET /api/v1/{client_id}/strategies` - List strategies
-- `GET /api/v1/{client_id}/strategies/{strategy_id}/performance` - Strategy performance
-- `GET /api/v1/{client_id}/strategies/{strategy_id}/positions` - Strategy positions
-- `GET /api/v1/{client_id}/strategies/{strategy_id}/trades` - Strategy trades
-
-### Trades
-
-- `POST /api/v1/trades` - Create trade
-
-### Admin
-
-- `POST /api/v1/admin/import-historical` - Import historical trades
-- `POST /api/v1/admin/sync-daily` - Trigger daily sync
-- `GET /api/v1/admin/sync-logs` - Get sync logs
-
----
-
-## Need Help?
-
-- **API Documentation**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-- **Backend README**: Read backend/README.md
-- **Check Logs**: uvicorn shows real-time logs when running
-
----
-
-## Success Checklist ✓
-
-- [ ] Docker is running
-- [ ] PostgreSQL container is up
-- [ ] Virtual environment is activated
-- [ ] Server is running on :8000
-- [ ] Can access http://localhost:8000/docs
-- [ ] Can create a client via API
-- [ ] Can create a strategy via API
-- [ ] Can create a trade via API
-
-**Once all checked, you're ready to start Phase 2: Historical Data Import!**
+- [ ] `./infra.sh status` shows all layers green
+- [ ] `http://localhost:8000/docs` loads Swagger UI
+- [ ] Can create a client, strategy, account, sleeve, and trade via the API
+- [ ] `backend/venv/bin/pytest backend/tests -v` — all tests pass

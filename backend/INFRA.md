@@ -3,7 +3,7 @@
 How to start, stop, check, and restart the local stack. Run everything from `backend/`:
 
 ```bash
-cd "/Users/sai/Documents/Github 2/pms/backend"
+cd "/Users/sai/Documents/Github 2/Achalara/backend"
 ```
 
 > **TL;DR — use the wrapper:** `./infra.sh up -d` (start all), `./infra.sh status`,
@@ -30,7 +30,7 @@ cd "/Users/sai/Documents/Github 2/pms/backend"
 ## Full stack — cold start
 
 ```bash
-cd "/Users/sai/Documents/Github 2/pms/backend"
+cd "/Users/sai/Documents/Github 2/Achalara/backend"
 source venv/bin/activate
 
 colima start                       # 1. Docker runtime (no-op if already running)

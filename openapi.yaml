@@ -1,0 +1,1628 @@
+openapi: 3.0.3
+info:
+  title: Portfolio Management System API
+  description: |
+    Multi-client, multi-strategy investment portfolio management backend.
+
+    **Hierarchy:** Client → Account → Sleeve (Account × Strategy join) → Trades/Positions
+
+    - A **Strategy** is a firm-wide definition (e.g. "Growth", "Income") — global and reusable.
+    - A **Sleeve** is one strategy as run in one account — it owns trades, positions, and sync configs.
+    - All resource IDs are UUIDs (string).
+  version: 1.0.0
+  contact:
+    email: venkatasudheerc@gmail.com
+
+servers:
+  - url: http://localhost:8000
+    description: Local development server
+
+tags:
+  - name: root
+    description: Health and service info
+  - name: clients
+    description: Client management and roll-up views
+  - name: accounts
+    description: Account management (nested under clients)
+  - name: sleeves
+    description: Sleeve management — trades, positions, performance
+  - name: strategies
+    description: Firm-wide strategy definitions
+  - name: trades
+    description: Individual trade creation
+  - name: admin
+    description: CSV import, Google Sheets sync, sync configs, and logs
+
+paths:
+
+  # ─── Root ───────────────────────────────────────────────────────────────────
+
+  /:
+    get:
+      tags: [root]
+      summary: Service info
+      operationId: getRoot
+      responses:
+        "200":
+          description: Service name and version
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  service:
+                    type: string
+                  version:
+                    type: string
+
+  /health:
+    get:
+      tags: [root]
+      summary: Health check
+      operationId: healthCheck
+      responses:
+        "200":
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  environment:
+                    type: string
+
+  # ─── Clients ────────────────────────────────────────────────────────────────
+
+  /api/v1/clients/:
+    post:
+      tags: [clients]
+      summary: Create a client
+      operationId: createClient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientCreate"
+      responses:
+        "201":
+          description: Client created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/clients/{client_id}:
+    get:
+      tags: [clients]
+      summary: Get a client by ID
+      operationId: getClient
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      responses:
+        "200":
+          description: Client details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/performance:
+    get:
+      tags: [clients]
+      summary: Client-level performance roll-up (MWR/TWR)
+      description: Merges all trade flows across every sleeve under this client. Returns per-account children.
+      operationId: getClientPerformance
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200":
+          description: Client performance with account-level children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelPerformance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/performance/monthly:
+    get:
+      tags: [clients]
+      summary: Client month-on-month returns since inception
+      operationId: getClientMonthlyPerformance
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      responses:
+        "200":
+          description: Monthly return breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyReturnsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/positions:
+    get:
+      tags: [clients]
+      summary: Merged positions across all sleeves for a client
+      operationId: getClientPositions
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      responses:
+        "200":
+          description: Aggregated position summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientPositionsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/trades:
+    get:
+      tags: [clients]
+      summary: All trades across all sleeves for a client
+      operationId: getClientTrades
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/skip"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated trade list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientTradesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Accounts ───────────────────────────────────────────────────────────────
+
+  /api/v1/clients/{client_id}/accounts:
+    post:
+      tags: [accounts]
+      summary: Create an account for a client
+      operationId: createAccount
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountCreate"
+      responses:
+        "201":
+          description: Account created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags: [accounts]
+      summary: List all accounts for a client
+      operationId: listAccounts
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+      responses:
+        "200":
+          description: List of accounts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AccountResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}:
+    get:
+      tags: [accounts]
+      summary: Get a specific account
+      operationId: getAccount
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      responses:
+        "200":
+          description: Account details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance:
+    get:
+      tags: [accounts]
+      summary: Account-level performance roll-up (MWR/TWR)
+      description: Merges all trade flows across every sleeve in this account. Returns per-sleeve children.
+      operationId: getAccountPerformance
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200":
+          description: Account performance with sleeve-level children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelPerformance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance/monthly:
+    get:
+      tags: [accounts]
+      summary: Account month-on-month returns since inception
+      operationId: getAccountMonthlyPerformance
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      responses:
+        "200":
+          description: Monthly return breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyReturnsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/positions:
+    get:
+      tags: [accounts]
+      summary: Merged positions across all sleeves in an account
+      operationId: getAccountPositions
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      responses:
+        "200":
+          description: Aggregated position summary for the account
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountPositionsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Sleeves ────────────────────────────────────────────────────────────────
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves:
+    post:
+      tags: [sleeves]
+      summary: Apply a strategy to an account (create a sleeve)
+      operationId: createSleeve
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SleeveCreate"
+      responses:
+        "201":
+          description: Sleeve created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SleeveResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: This account already has a sleeve for the given strategy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags: [sleeves]
+      summary: List all sleeves in an account
+      operationId: listSleeves
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+      responses:
+        "200":
+          description: List of sleeves
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SleeveResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}:
+    get:
+      tags: [sleeves]
+      summary: Get a single sleeve
+      operationId: getSleeve
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      responses:
+        "200":
+          description: Sleeve details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SleeveResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance:
+    get:
+      tags: [sleeves]
+      summary: Sleeve-level performance (MWR/TWR)
+      operationId: getSleevePerformance
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200":
+          description: Sleeve performance summary and value time-series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelPerformance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance/monthly:
+    get:
+      tags: [sleeves]
+      summary: Sleeve month-on-month returns since inception
+      operationId: getSleeveMonthlyPerformance
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      responses:
+        "200":
+          description: Monthly return breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyReturnsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions:
+    get:
+      tags: [sleeves]
+      summary: Open positions and portfolio value for a sleeve
+      operationId: getSleevePositions
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      responses:
+        "200":
+          description: Open positions with portfolio summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PortfolioValueResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions/closed:
+    get:
+      tags: [sleeves]
+      summary: Closed round-trip positions and realized gains for a sleeve
+      operationId: getSleeveClosedPositions
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      responses:
+        "200":
+          description: Closed positions with total realized gain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClosedPositionsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/trades:
+    get:
+      tags: [sleeves]
+      summary: Trades for a sleeve (paginated)
+      operationId: getSleeveTrades
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+        - $ref: "#/components/parameters/skip"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated trade list for the sleeve
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SleeveTradesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/market-prices:
+    post:
+      tags: [sleeves]
+      summary: Manually update market prices for a sleeve's symbols
+      operationId: updateMarketPrices
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarketPriceUpdate"
+      responses:
+        "200":
+          description: Prices updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: success
+                  updated:
+                    type: integer
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/fetch-market-prices:
+    post:
+      tags: [sleeves]
+      summary: Fetch current market prices from Webull for a sleeve's symbols
+      operationId: fetchMarketPrices
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+      responses:
+        "200":
+          description: Prices fetched (status may be "success" or "partial" if some symbols failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FetchMarketPricesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Strategies ─────────────────────────────────────────────────────────────
+
+  /api/v1/strategies/:
+    post:
+      tags: [strategies]
+      summary: Create a global strategy definition
+      description: Strategy names are unique case-insensitively. Returns 409 on duplicate.
+      operationId: createStrategy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StrategyCreate"
+      responses:
+        "201":
+          description: Strategy created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrategyResponse"
+        "409":
+          description: A strategy with this name already exists (case-insensitive)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags: [strategies]
+      summary: List all global strategy definitions
+      operationId: listStrategies
+      responses:
+        "200":
+          description: List of strategies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/StrategyResponse"
+
+  /api/v1/strategies/{strategy_id}:
+    get:
+      tags: [strategies]
+      summary: Get a strategy definition by ID
+      operationId: getStrategy
+      parameters:
+        - $ref: "#/components/parameters/strategy_id"
+      responses:
+        "200":
+          description: Strategy details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StrategyResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/strategies/{strategy_id}/performance:
+    get:
+      tags: [strategies]
+      summary: Strategy performance roll-up across all accounts running it
+      operationId: getStrategyPerformance
+      parameters:
+        - $ref: "#/components/parameters/strategy_id"
+        - $ref: "#/components/parameters/start_date"
+        - $ref: "#/components/parameters/end_date"
+      responses:
+        "200":
+          description: Strategy performance with per-sleeve children
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LevelPerformance"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/strategies/{strategy_id}/performance/monthly:
+    get:
+      tags: [strategies]
+      summary: Strategy month-on-month returns since inception
+      operationId: getStrategyMonthlyPerformance
+      parameters:
+        - $ref: "#/components/parameters/strategy_id"
+      responses:
+        "200":
+          description: Monthly return breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MonthlyReturnsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # ─── Trades ─────────────────────────────────────────────────────────────────
+
+  /api/v1/trades/:
+    post:
+      tags: [trades]
+      summary: Create a new trade
+      operationId: createTrade
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TradeCreate"
+      responses:
+        "201":
+          description: Trade created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResponse"
+        "404":
+          description: Sleeve not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  # ─── Admin ──────────────────────────────────────────────────────────────────
+
+  /api/v1/admin/import-historical:
+    post:
+      tags: [admin]
+      summary: Import historical trades from a CSV file
+      description: |
+        CSV columns: Date, Symbol, Action, Quantity, Price, Commission, Strategy, Account, Notes.
+
+        **Routing modes:**
+        - `sleeve_id` provided → all rows go into that single sleeve
+        - `sleeve_id` omitted → auto-route by Account + Strategy columns (creates accounts/strategies/sleeves as needed)
+
+        **Operation modes:**
+        - `VALIDATE` → dry-run; returns warnings without writing to DB
+        - `IMPORT` → writes trades; skips duplicates
+      operationId: importHistorical
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Target client UUID
+        - name: sleeve_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Target sleeve UUID (omit to enable auto-routing)
+        - name: mode
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [VALIDATE, IMPORT]
+          description: VALIDATE for dry-run, IMPORT to persist
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: CSV file to import
+      responses:
+        "200":
+          description: Import result (or validation result in VALIDATE mode)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/sync-daily:
+    post:
+      tags: [admin]
+      summary: Sync trades from a Google Sheet into a sleeve
+      description: Fetches the public Google Sheet as CSV and imports new rows. Duplicate rows are skipped via `google_sheet_row_id`.
+      operationId: syncDaily
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: sleeve_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: sheet_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Google Sheets document ID
+        - name: range_name
+          in: query
+          required: false
+          schema:
+            type: string
+            default: Sheet1
+          description: Sheet tab / named range
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncDailyResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/sync-logs:
+    get:
+      tags: [admin]
+      summary: Get import/sync audit logs
+      operationId: getSyncLogs
+      parameters:
+        - name: client_id
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Client UUID (reserved for future filtering)
+        - $ref: "#/components/parameters/skip"
+        - $ref: "#/components/parameters/limit"
+      responses:
+        "200":
+          description: Paginated sync logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncLogsResponse"
+
+  /api/v1/admin/sync-configs:
+    post:
+      tags: [admin]
+      summary: Register a Google Sheet → sleeve mapping for automated daily sync
+      operationId: createSyncConfig
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncConfigCreate"
+      responses:
+        "201":
+          description: Sync config created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetSyncConfig"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    get:
+      tags: [admin]
+      summary: List all sheet sync configurations
+      operationId: listSyncConfigs
+      parameters:
+        - name: client_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by client UUID
+      responses:
+        "200":
+          description: List of sync configs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SheetSyncConfig"
+
+  /api/v1/admin/sync-configs/{config_id}:
+    patch:
+      tags: [admin]
+      summary: Enable or disable an automated sync config
+      operationId: updateSyncConfig
+      parameters:
+        - name: config_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SyncConfigUpdate"
+      responses:
+        "200":
+          description: Updated sync config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SheetSyncConfig"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [admin]
+      summary: Remove a sync config
+      operationId: deleteSyncConfig
+      parameters:
+        - name: config_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+# ─── Components ───────────────────────────────────────────────────────────────
+
+components:
+
+  parameters:
+    client_id:
+      name: client_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Client UUID
+
+    account_id:
+      name: account_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Account UUID
+
+    sleeve_id:
+      name: sleeve_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Sleeve UUID
+
+    strategy_id:
+      name: strategy_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Strategy UUID
+
+    start_date:
+      name: start_date
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      description: Filter start date (YYYY-MM-DD)
+
+    end_date:
+      name: end_date
+      in: query
+      required: false
+      schema:
+        type: string
+        format: date
+      description: Filter end date (YYYY-MM-DD)
+
+    skip:
+      name: skip
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Pagination offset
+
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 1000
+        default: 100
+      description: Maximum number of results to return
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    BadRequest:
+      description: Bad request (e.g. invalid CSV format)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationError:
+      description: Request body failed Pydantic validation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              detail:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    loc:
+                      type: array
+                      items: {}
+                    msg:
+                      type: string
+                    type:
+                      type: string
+
+  schemas:
+
+    Error:
+      type: object
+      properties:
+        detail:
+          type: string
+      required: [detail]
+
+    # ── Clients ──────────────────────────────────────────────────────────────
+
+    ClientCreate:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          example: Acme Corp
+        email:
+          type: string
+          format: email
+          example: contact@acme.com
+
+    ClientResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+        email:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    ClientPositionsResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+        total_cost_basis:
+          type: number
+          format: float
+        total_market_value:
+          type: number
+          format: float
+        total_unrealized_gain:
+          type: number
+          format: float
+        positions_count:
+          type: integer
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AggregatedPosition"
+
+    AggregatedPosition:
+      type: object
+      properties:
+        symbol:
+          type: string
+        quantity:
+          type: number
+        cost_basis:
+          type: number
+        avg_cost:
+          type: number
+        current_price:
+          type: number
+          nullable: true
+        market_value:
+          type: number
+          nullable: true
+        unrealized_gain:
+          type: number
+          nullable: true
+        unrealized_gain_pct:
+          type: number
+          nullable: true
+        trades_count:
+          type: integer
+
+    ClientTradesResponse:
+      type: object
+      properties:
+        client_id:
+          type: string
+        total:
+          type: integer
+        skip:
+          type: integer
+        limit:
+          type: integer
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeSummary"
+
+    TradeSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        sleeve_id:
+          type: string
+        trade_date:
+          type: string
+          format: date
+        symbol:
+          type: string
+        action:
+          $ref: "#/components/schemas/TradeAction"
+        quantity:
+          type: number
+        price:
+          type: number
+        commission:
+          type: number
+        notes:
+          type: string
+
+    # ── Accounts ─────────────────────────────────────────────────────────────
+
+    AccountCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Taxable Brokerage
+        description:
+          type: string
+          default: ""
+        account_number:
+          type: string
+          nullable: true
+
+    AccountResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        client_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        account_number:
+          type: string
+          nullable: true
+
+    AccountPositionsResponse:
+      type: object
+      properties:
+        account_id:
+          type: string
+        total_cost_basis:
+          type: number
+        total_market_value:
+          type: number
+        total_unrealized_gain:
+          type: number
+        positions_count:
+          type: integer
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AggregatedPosition"
+
+    # ── Sleeves ──────────────────────────────────────────────────────────────
+
+    SleeveCreate:
+      type: object
+      required: [strategy_id]
+      properties:
+        strategy_id:
+          type: string
+          example: 550e8400-e29b-41d4-a716-446655440001
+
+    SleeveResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        account_id:
+          type: string
+        strategy_id:
+          type: string
+        strategy_name:
+          type: string
+          nullable: true
+
+    SleeveTradesResponse:
+      type: object
+      properties:
+        sleeve_id:
+          type: string
+        total:
+          type: integer
+        trades:
+          type: array
+          items:
+            $ref: "#/components/schemas/TradeSummary"
+
+    # ── Strategies ───────────────────────────────────────────────────────────
+
+    StrategyCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          example: Growth
+        description:
+          type: string
+          default: ""
+
+    StrategyResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    # ── Trades ───────────────────────────────────────────────────────────────
+
+    TradeAction:
+      type: string
+      enum: [BUY, SELL]
+
+    TradeCreate:
+      type: object
+      required: [sleeve_id, trade_date, symbol, action, quantity, price]
+      properties:
+        sleeve_id:
+          type: string
+        trade_date:
+          type: string
+          format: date
+          example: "2024-01-15"
+        symbol:
+          type: string
+          example: AAPL
+        action:
+          $ref: "#/components/schemas/TradeAction"
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+          example: 100
+        price:
+          type: number
+          exclusiveMinimum: 0
+          example: 185.50
+        commission:
+          type: number
+          minimum: 0
+          default: 0
+        notes:
+          type: string
+          default: ""
+
+    TradeResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        sleeve_id:
+          type: string
+        trade_date:
+          type: string
+          format: date
+        symbol:
+          type: string
+        action:
+          $ref: "#/components/schemas/TradeAction"
+        quantity:
+          type: number
+        price:
+          type: number
+        commission:
+          type: number
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ── Positions ────────────────────────────────────────────────────────────
+
+    PositionResponse:
+      type: object
+      properties:
+        id:
+          type: string
+        sleeve_id:
+          type: string
+        symbol:
+          type: string
+        quantity:
+          type: number
+        avg_cost:
+          type: number
+        cost_basis:
+          type: number
+        current_price:
+          type: number
+          nullable: true
+        market_value:
+          type: number
+          nullable: true
+        unrealized_gain:
+          type: number
+          nullable: true
+        unrealized_gain_pct:
+          type: number
+          nullable: true
+
+    ClosedPositionResponse:
+      type: object
+      properties:
+        symbol:
+          type: string
+        buy_date:
+          type: string
+          format: date
+        sell_date:
+          type: string
+          format: date
+        quantity:
+          type: number
+        avg_cost:
+          type: number
+        sell_price:
+          type: number
+        realized_gain:
+          type: number
+        realized_gain_pct:
+          type: number
+
+    PortfolioSummary:
+      type: object
+      properties:
+        total_cost_basis:
+          type: number
+        total_market_value:
+          type: number
+        total_unrealized_gain:
+          type: number
+        total_return_pct:
+          type: number
+          nullable: true
+        total_realized_gain:
+          type: number
+        positions_count:
+          type: integer
+        closed_positions_count:
+          type: integer
+
+    PortfolioValueResponse:
+      type: object
+      properties:
+        summary:
+          $ref: "#/components/schemas/PortfolioSummary"
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/PositionResponse"
+
+    ClosedPositionsResponse:
+      type: object
+      properties:
+        total_realized_gain:
+          type: number
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClosedPositionResponse"
+
+    # ── Performance ──────────────────────────────────────────────────────────
+
+    PerformancePoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        value:
+          type: number
+          nullable: true
+
+    PerformanceSummary:
+      type: object
+      properties:
+        mwr:
+          type: number
+          nullable: true
+          description: Money Weighted Return (IRR) as a decimal (e.g. 0.12 = 12%)
+        twr:
+          type: number
+          nullable: true
+          description: Time Weighted Return (geometric linking) as a decimal
+        total_invested:
+          type: number
+        total_current_value:
+          type: number
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
+
+    ChildPerformance:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        summary:
+          $ref: "#/components/schemas/PerformanceSummary"
+
+    LevelPerformance:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [client, account, sleeve, strategy]
+        id:
+          type: string
+        name:
+          type: string
+        summary:
+          $ref: "#/components/schemas/PerformanceSummary"
+        timeseries:
+          type: array
+          items:
+            $ref: "#/components/schemas/PerformancePoint"
+        children:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChildPerformance"
+
+    MonthlyReturn:
+      type: object
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        return:
+          type: number
+          nullable: true
+          description: Monthly return as a decimal (e.g. 0.034 = 3.4%)
+
+    MonthlyReturnsResponse:
+      type: object
+      properties:
+        level:
+          type: string
+        id:
+          type: string
+        name:
+          type: string
+        monthly_returns:
+          type: array
+          items:
+            $ref: "#/components/schemas/MonthlyReturn"
+
+    # ── Market Prices ────────────────────────────────────────────────────────
+
+    MarketPriceUpdate:
+      type: object
+      required: [prices]
+      properties:
+        prices:
+          type: object
+          additionalProperties:
+            type: number
+          example:
+            AAPL: 189.50
+            MSFT: 415.00
+
+    FetchMarketPricesResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [success, partial]
+        fetched:
+          type: integer
+        symbols:
+          type: array
+          items:
+            type: string
+        prices:
+          type: object
+          additionalProperties:
+            type: number
+        failed:
+          type: array
+          items:
+            type: string
+
+    # ── Admin / Sync ─────────────────────────────────────────────────────────
+
+    ImportResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        mode:
+          type: string
+          enum: [VALIDATE, IMPORT]
+        routing:
+          type: string
+          enum: [single-sleeve, auto-route]
+        summary:
+          type: object
+          properties:
+            total_rows:
+              type: integer
+            valid_trades:
+              type: integer
+            duplicates_found:
+              type: integer
+            errors:
+              type: integer
+            accounts_created:
+              type: integer
+              description: Only present in auto-route mode
+            strategies_created:
+              type: integer
+              description: Only present in auto-route mode
+            sleeves_created:
+              type: integer
+              description: Only present in auto-route mode
+        message:
+          type: string
+        validation_warnings:
+          type: array
+          nullable: true
+          items:
+            type: object
+          description: Populated in VALIDATE mode
+        sync_log_id:
+          type: string
+          nullable: true
+          description: Populated in IMPORT mode
+
+    SyncDailyResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: success
+        message:
+          type: string
+        summary:
+          type: object
+          properties:
+            total_rows:
+              type: integer
+            imported:
+              type: integer
+            duplicates_skipped:
+              type: integer
+            errors:
+              type: integer
+        sync_log_id:
+          type: string
+
+    SyncLogEntry:
+      type: object
+      properties:
+        id:
+          type: string
+        import_type:
+          type: string
+        status:
+          type: string
+        rows_processed:
+          type: integer
+        rows_success:
+          type: integer
+        rows_failed:
+          type: integer
+        error_details:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    SyncLogsResponse:
+      type: object
+      properties:
+        total:
+          type: integer
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncLogEntry"
+
+    SyncConfigCreate:
+      type: object
+      required: [sleeve_id, sheet_id]
+      properties:
+        sleeve_id:
+          type: string
+        sheet_id:
+          type: string
+          description: Google Sheets document ID
+        range_name:
+          type: string
+          default: Sheet1
+        enabled:
+          type: boolean
+          default: true
+
+    SyncConfigUpdate:
+      type: object
+      required: [enabled]
+      properties:
+        enabled:
+          type: boolean
+
+    SheetSyncConfig:
+      type: object
+      properties:
+        id:
+          type: string
+        sleeve_id:
+          type: string
+        sheet_id:
+          type: string
+        range_name:
+          type: string
+        enabled:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time

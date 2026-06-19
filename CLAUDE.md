@@ -1,22 +1,52 @@
-# CLAUDE.md
+# CLAUDE.md — Achalara (Shared Context)
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+@backend/CLAUDE.md
+@frontend/CLAUDE.md
 
-## Project Context
+This file provides shared guidance to Claude Code for the **Achalara** monorepo.
+Layer-specific rules are in the sub-directory CLAUDE.md files above (auto-loaded via `@` imports):
 
-Multi-client, multi-strategy investment portfolio management backend. Core responsibilities:
+- **Backend:** `backend/CLAUDE.md` — FastAPI, SQLAlchemy, migrations, services, testing
+- **Frontend:** `frontend/CLAUDE.md` — React, TypeScript, API client, component conventions
+
+## Project Overview
+
+**Achalara** is a multi-client, multi-strategy investment portfolio management system.
+
+Core responsibilities:
 - Track trades (BUY/SELL) through a `Client → Account → Sleeve` hierarchy
 - Calculate portfolio performance: MWR (Money Weighted Return) and TWR (Time Weighted Return)
 - Import historical trades from CSV or sync from public Google Sheets
 - Fetch live/historical market prices via Webull API
 
-See `ROADMAP.md` for the phased plan, `idea.md` for the original vision, and
-`backend/DATA_MODEL.md` for the authoritative schema (keep it in sync with model changes).
+See `ROADMAP.md` for the phased plan and `idea.md` for the original vision.
 
-## The Sleeve Model (most important concept)
+## Monorepo Layout
 
-The schema went through a **Sleeve refactor** (migration `fe521b07fb54`). Read `backend/DATA_MODEL.md`
-before touching models, performance, or imports. The hierarchy is:
+```
+Achalara/
+├── CLAUDE.md              # this file — shared context
+├── openapi.yaml           # OpenAPI 3.0 spec — source of truth for the API contract
+├── README.md              # project overview and quick start
+├── ROADMAP.md             # phased delivery plan
+├── idea.md                # original vision
+├── backend/
+│   ├── CLAUDE.md          # backend-specific guidance (read before touching backend code)
+│   ├── app/               # FastAPI application
+│   ├── migrations/        # Alembic migrations
+│   ├── tests/             # pytest suite
+│   ├── bruno/             # Bruno API collection
+│   └── ...
+└── frontend/
+    ├── CLAUDE.md          # frontend-specific guidance (read before touching frontend code)
+    └── ...                # React + TypeScript app (Phase 5)
+```
+
+**`openapi.yaml` at the root is the contract between frontend and backend.** The backend exposes it at `/docs`; the frontend generates a typed API client from it. Never duplicate endpoint definitions — update `openapi.yaml` when the backend API changes.
+
+## The Sleeve Model (most important concept — applies to both layers)
+
+Read `backend/DATA_MODEL.md` before touching models, performance calculations, or any UI that displays portfolio data. The hierarchy is:
 
 ```
 Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account × strategy instance)
@@ -25,120 +55,15 @@ Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account 
                           └──< SheetSyncConfig
 ```
 
-- A **Strategy** is a firm-wide *definition* ("Growth", "Income") — global, reusable across
-  accounts/clients, no `account_id`/`client_id`. `name` is **unique case-insensitively**
-  (`uq_strategy_name_lower` on `lower(name)`); `POST /strategies` returns 409 on a CI duplicate.
-- A **Sleeve** is one strategy *as run in one account* — the join between `Account` and `Strategy`.
-  **Sleeves own trades, positions, and sync configs**, not strategies. `UNIQUE(account_id, strategy_id)`.
-- Trades/positions reference `sleeve_id`. There is no `client_id` on sync configs — client is
-  derived via `sleeve → account.client_id`.
+- A **Strategy** is a firm-wide *definition* ("Growth", "Income") — global, reusable, no `account_id`/`client_id`. Names are unique case-insensitively; `POST /strategies` returns 409 on a duplicate.
+- A **Sleeve** is one strategy *as run in one account* — the join between `Account` and `Strategy`. Sleeves own trades, positions, and sync configs. `UNIQUE(account_id, strategy_id)`.
+- Trades/positions reference `sleeve_id`. Client is derived via `sleeve → account.client_id`.
 
-## Tech Stack
+This hierarchy must be reflected consistently in both the backend API routes and the frontend navigation / data-fetching logic.
 
-- **Framework:** FastAPI 0.104 (sync `def` handlers run in the threadpool)
-- **ORM:** SQLAlchemy 2.0 with sync `Session` (never `AsyncSession`)
-- **Migrations:** Alembic
-- **Database:** PostgreSQL 15 (Docker); SQLite in-memory for tests (built via `create_all`)
-- **Validation:** Pydantic v2
-- **Scheduler:** APScheduler 3 (`BackgroundScheduler`), started/stopped in the lifespan hook;
-  Redis 7 is the optional jobstore
-- **Testing:** pytest + httpx `TestClient`
-- **Linting:** Black, Flake8
+## Cross-Cutting Conventions
 
-UUID (`String(36)`) primary keys on all models. Timestamps are tz-aware via `BaseModel`.
-
-## Commands
-
-Run from the repo root (`pms/`). The venv lives at `backend/venv/`.
-
-```bash
-# Start infra (Postgres + Redis)
-cd backend && docker-compose up -d
-
-# Run the server (from backend/, with venv active)
-uvicorn app.main:app --reload --port 8000      # Swagger UI at /docs
-
-# Tests
-backend/venv/bin/pytest backend/tests -v
-backend/venv/bin/pytest backend/tests --cov=backend/app          # with coverage
-backend/venv/bin/pytest backend/tests/test_sleeves.py -v         # single file
-backend/venv/bin/pytest backend/tests/test_performance.py::test_name -v   # single test
-
-# Migrations (run from backend/)
-alembic upgrade head
-alembic revision --autogenerate -m "description"
-
-# Format / lint (from backend/)
-black app/
-flake8 app/
-```
-
-`backend/infra.sh` wraps common docker/db operations.
-
-## Architecture
-
-Request flow: **route → service → ORM model**. Routes are registered in `app/main.py`:
-
-| Prefix | Router |
-|---|---|
-| `/api/v1/clients` | `clients`, `accounts`, `sleeves` (nested under clients) |
-| `/api/v1/strategies` | `strategies` (firm-wide definitions) |
-| `/api/v1/trades` | `trades` |
-| `/api/v1/admin` | `admin` (import, sync-daily, sync-logs) |
-
-**Performance roll-ups** (`services/performance_service.py`): a level resolves to a *set of
-sleeve ids*, then one calc runs over the **merged** trade stream — returns are NOT averaged
-from child returns. Account = all sleeves in the account; Client = all sleeves under the
-client's accounts; Strategy = all sleeves for that strategy. Each response is
-`{ level, id, name, summary, timeseries, children }`.
-
-### Key files
-
-| File | Purpose |
-|---|---|
-| `app/main.py` | App startup, router registration, lifespan (scheduler start/stop) |
-| `app/config.py` | `Settings` reads `.env` (`database_url`, `redis_url`, `scheduler_enabled`, Webull keys) |
-| `app/db/database.py` | Sync engine, `SessionLocal`, `get_db()` dependency |
-| `app/services/performance_service.py` | Resolves sleeve sets and dispatches MWR/TWR calc |
-| `app/services/mwr_calculation.py` | IRR solver (Money Weighted Return) |
-| `app/services/twr_calculation.py` | Geometric linking (Time Weighted Return) |
-| `app/services/portfolio_calculation.py` | Position tracking, weighted-avg cost basis, `persist_positions` |
-| `app/services/trade_ingestion.py` | Row validation + **duplicate detection** (intentional — do not skip) |
-| `app/services/trade_import.py` | CSV import pipeline (`import_type` param; `VALIDATE`/`IMPORT` modes) |
-| `app/services/google_sheets_sync.py` | Fetches public sheets via CSV export (no credentials) |
-| `app/services/daily_sync.py` | Reusable sheet→DB sync (`run_daily_sync`, `run_all_enabled_syncs`) |
-| `app/services/scheduler.py` | APScheduler lifecycle (`start_scheduler`, `stop_scheduler`) |
-| `app/services/market_price.py` | Position price updates / persistence |
-| `app/services/webull_market_data.py` | Webull API client |
-| `app/models/sleeve.py` | The account × strategy join that owns trades/positions/sync configs |
-| `app/models/sync_log.py` | Standalone import/sync audit trail (no FK to the hierarchy) |
-| `tests/conftest.py` | Shared fixtures (DB session, `TestClient`) |
-
-## Coding Conventions
-
-- **Routes are thin** — delegate all logic to a service; no business logic in handlers.
-- **One service per domain.** Reuse existing services rather than duplicating logic.
-- **Sync everywhere.** Plain `def` handlers + `Session`. Never add `async def` handlers that do
-  blocking DB calls, and never mix in `AsyncSession`.
-- **Pydantic schemas** live in `api/schemas/`; ORM models stay in `models/`.
-- **Config via `.env`** through `config.py` — no hardcoded secrets/connection strings/API keys.
-- **Schema changes go through Alembic** (`alembic revision --autogenerate`) — never edit tables directly.
-
-## Dedup rules (don't bypass)
-
-- **Sheet-sourced trades** dedup on `trades.google_sheet_row_id` (unique; NULL for CSV trades).
-- **CSV imports** dedup on `(date, symbol, qty, price)` per sleeve in the import pipeline.
-- Re-running a sync is safe — duplicates are skipped. The dedup in `trade_ingestion.py` is intentional.
-
-## Sync logic must stay shared
-
-The `admin/sync-daily` route and the scheduler job both call `run_daily_sync()` from
-`daily_sync.py`. Do not inline sync logic in routes or duplicate it in the scheduler.
-
-## What "Done" Looks Like
-
-- Route returns real data, not a placeholder or empty list
-- A corresponding test exists and passes (`backend/venv/bin/pytest backend/tests`)
-- Edge cases handled in the service layer (empty results, zero positions, etc.)
-- No TODO/FIXME comments remain
-- Any schema change has an Alembic migration and `DATA_MODEL.md` is updated
+- **No hardcoded secrets** anywhere — backend uses `.env` via `config.py`; frontend uses env vars via Vite's `import.meta.env`.
+- **All IDs are UUIDs** (string, 36 chars). Never assume numeric IDs.
+- **Timestamps are tz-aware** ISO-8601 strings in API responses.
+- **`openapi.yaml` is the single source of truth** for request/response shapes. If you add or change an endpoint, update `openapi.yaml` too.
