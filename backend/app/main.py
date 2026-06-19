@@ -18,7 +18,13 @@ from app.models import (  # noqa: F401  — side-effect imports to register mode
 from app.api.routes import clients, accounts, strategies, sleeves, trades, admin
 
 # Configure logging
-logging.basicConfig(level=settings.log_level)
+_log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+_date_format = "%Y-%m-%d %H:%M:%S"
+logging.basicConfig(level=settings.log_level, format=_log_format, datefmt=_date_format)
+for _uvicorn_logger in ("uvicorn", "uvicorn.access", "uvicorn.error"):
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter(_log_format, datefmt=_date_format))
+    logging.getLogger(_uvicorn_logger).handlers = [_handler]
 logger = logging.getLogger(__name__)
 
 # Schema is managed exclusively by Alembic (`alembic upgrade head`). The app no

@@ -10,7 +10,8 @@ from app.models.client import Client
 from app.models.account import Account
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
-from app.api.schemas.client import ClientCreate, ClientResponse
+from app.api.schemas.client import ClientCreate, ClientResponse, ClientLogin
+from app.config import settings
 from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
 from app.services.performance_service import PerformanceService
 from app.services.portfolio_calculation import PortfolioCalculationService
@@ -31,6 +32,26 @@ def create_client(client: ClientCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_client)
     return db_client
+
+
+@router.get("/lookup", response_model=ClientResponse)
+def lookup_client_by_email(email: str = Query(..., description="Client email address"), db: Session = Depends(get_db)):
+    """Look up a client by email address"""
+    client = db.query(Client).filter(Client.email == email).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="No client found with that email")
+    return client
+
+
+@router.post("/login", response_model=ClientResponse)
+def login_client(body: ClientLogin, db: Session = Depends(get_db)):
+    """Identify a client by email + dev password. Returns client data on success."""
+    if body.password != settings.client_dev_password:
+        raise HTTPException(status_code=401, detail="Incorrect password")
+    client = db.query(Client).filter(Client.email == body.email).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="No client found with that email")
+    return client
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

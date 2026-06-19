@@ -1,25 +1,29 @@
-# CLAUDE.md — Achalara (Shared Context)
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 @backend/CLAUDE.md
 @frontend/CLAUDE.md
 
-This file provides shared guidance to Claude Code for the **Achalara** monorepo.
-Layer-specific rules are in the sub-directory CLAUDE.md files above (auto-loaded via `@` imports):
-
-- **Backend:** `backend/CLAUDE.md` — FastAPI, SQLAlchemy, migrations, services, testing
-- **Frontend:** `frontend/CLAUDE.md` — React, TypeScript, API client, component conventions
-
 ## Project Overview
 
-**Achalara** is a multi-client, multi-strategy investment portfolio management system.
+**Achalara** is a multi-client, multi-strategy investment portfolio management system for advisory firms. It tracks trades through a `Client → Account → Sleeve` hierarchy, calculates portfolio performance (MWR/TWR), imports historical trades from CSV or Google Sheets, and fetches live prices via Webull.
 
-Core responsibilities:
-- Track trades (BUY/SELL) through a `Client → Account → Sleeve` hierarchy
-- Calculate portfolio performance: MWR (Money Weighted Return) and TWR (Time Weighted Return)
-- Import historical trades from CSV or sync from public Google Sheets
-- Fetch live/historical market prices via Webull API
+See `ROADMAP.md` for the phased plan.
 
-See `ROADMAP.md` for the phased plan and `idea.md` for the original vision.
+## Starting the full stack
+
+```bash
+# Terminal 1 — backend infra + server
+cd backend && docker-compose up -d
+source venv/bin/activate && uvicorn app.main:app --reload --port 8000
+
+# Terminal 2 — frontend dev server
+cd frontend && npm run dev          # http://localhost:5173
+
+# Regenerate typed API client after any openapi.yaml change
+cd frontend && npm run gen:api      # copies ../openapi.yaml → src/api/schema.d.ts
+```
 
 ## Monorepo Layout
 

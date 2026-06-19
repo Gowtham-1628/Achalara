@@ -76,6 +76,57 @@ paths:
 
   # ─── Clients ────────────────────────────────────────────────────────────────
 
+  /api/v1/clients/lookup:
+    get:
+      tags: [clients]
+      summary: Look up a client by email address
+      operationId: lookupClientByEmail
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+          description: Client email address
+      responses:
+        "200":
+          description: Client found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/login:
+    post:
+      tags: [clients]
+      summary: Identify a client by email + dev password
+      description: Returns the client record on success. Dev-only — not a production auth mechanism.
+      operationId: loginClient
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientLogin"
+      responses:
+        "200":
+          description: Login successful — client returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClientResponse"
+        "401":
+          description: Incorrect password
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/clients/:
     post:
       tags: [clients]
@@ -980,6 +1031,16 @@ components:
       required: [detail]
 
     # ── Clients ──────────────────────────────────────────────────────────────
+
+    ClientLogin:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
 
     ClientCreate:
       type: object

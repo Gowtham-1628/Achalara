@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     port: int = 8000
     redis_url: str = "redis://localhost:6379/0"
     scheduler_enabled: bool = True
+    client_dev_password: str = "achalara2024"
 
     class Config:
         env_file = str(_ENV_FILE)
