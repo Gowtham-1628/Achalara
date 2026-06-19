@@ -1,0 +1,6 @@
+node_modules
+dist
+.env
+openapi.yaml
+src/api/schema.d.ts
+*.tsbuildinfo

@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: 'Inter', system-ui, sans-serif;
+    color: #14201C;
+    background-color: #FBFCFB;
+  }
+
+  :focus-visible {
+    outline: 2px solid #C9A24B;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Tabular numbers on all mono elements */
+  .font-mono {
+    font-feature-settings: "tnum" 1;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-feature-settings: "tnum" 1;
+  }
+}

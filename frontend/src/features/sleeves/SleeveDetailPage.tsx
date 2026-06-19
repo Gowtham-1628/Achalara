@@ -1,0 +1,280 @@
+import { useState, type FormEvent } from 'react'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useSleeve, useSleevePositions, useSleeveClosedPositions, useSleeveTrades, useFetchMarketPrices } from '@/hooks/useSleeves'
+import { useScope } from '@/context/ScopeContext'
+import { useCreateTrade } from '@/hooks/useTrades'
+import { DataTable, type Column } from '@/components/DataTable'
+import { ErrorState } from '@/components/ErrorState'
+import { SkeletonCard } from '@/components/Skeleton'
+import { formatCurrency, formatDate, formatPercent } from '@/lib/formatters'
+import { GainBadge } from '@/components/StatCard'
+import type { PositionResponse, ClosedPosition, TradeSummary } from '@/api/types'
+
+export function SleeveDetailPage() {
+  const { clientId, accountId, sleeveId } = useParams<{
+    clientId: string; accountId: string; sleeveId: string
+  }>()
+  const navigate = useNavigate()
+  const { setClient, setAccount, setSleeve, scope } = useScope()
+
+  const { data: sleeve, isLoading, isError, refetch } = useSleeve(clientId!, accountId!, sleeveId!)
+  const { data: portfolioData } = useSleevePositions(clientId!, accountId!, sleeveId!)
+  const { data: closedPositions } = useSleeveClosedPositions(clientId!, accountId!, sleeveId!)
+  const { data: tradesData } = useSleeveTrades(clientId!, accountId!, sleeveId!, 0, 100)
+  const fetchPrices = useFetchMarketPrices()
+  const createTrade = useCreateTrade()
+
+  const [activeTab, setActiveTab] = useState<'positions' | 'closed' | 'trades'>('positions')
+  const [showTradeForm, setShowTradeForm] = useState(false)
+  const [trade, setTrade] = useState({
+    symbol: '', action: 'BUY' as 'BUY' | 'SELL', trade_date: '',
+    quantity: '', price: '', commission: '0', notes: '',
+  })
+  const [tradeError, setTradeError] = useState('')
+
+  if (isLoading) return <SkeletonCard />
+  if (isError || !sleeve) return <ErrorState message="Sleeve not found." onRetry={() => refetch()} />
+
+  const handleCreateTrade = async (e: FormEvent) => {
+    e.preventDefault()
+    setTradeError('')
+    try {
+      await createTrade.mutateAsync({
+        sleeve_id: sleeveId!,
+        symbol: trade.symbol,
+        action: trade.action,
+        trade_date: trade.trade_date,
+        quantity: Number(trade.quantity),
+        price: Number(trade.price),
+        commission: Number(trade.commission),
+        notes: trade.notes,
+      })
+      setTrade({ symbol: '', action: 'BUY', trade_date: '', quantity: '', price: '', commission: '0', notes: '' })
+      setShowTradeForm(false)
+    } catch (err) {
+      setTradeError(String(err))
+    }
+  }
+
+  const openPosCols: Column<PositionResponse>[] = [
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
+    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), numeric: true },
+    { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), numeric: true },
+    { key: 'current_price', header: 'Price', render: (r) => formatCurrency(r.current_price), numeric: true },
+    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), numeric: true },
+    { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (
+      <span className={(r.unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'}>
+        {formatCurrency(r.unrealized_gain)}
+      </span>
+    ), numeric: true },
+    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, numeric: true },
+  ]
+
+  const closedCols: Column<ClosedPosition>[] = [
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
+    { key: 'buy_date', header: 'Bought', render: (r) => formatDate(r.buy_date) },
+    { key: 'sell_date', header: 'Sold', render: (r) => formatDate(r.sell_date) },
+    { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), numeric: true },
+    { key: 'proceeds', header: 'Proceeds', render: (r) => formatCurrency(r.proceeds), numeric: true },
+    { key: 'realized_gain', header: 'Realised gain', render: (r) => (
+      <span className={r.realized_gain >= 0 ? 'text-gain' : 'text-loss'}>
+        {formatCurrency(r.realized_gain)}
+      </span>
+    ), numeric: true },
+    { key: 'realized_gain_pct', header: '% Gain', render: (r) => (
+      <span className={r.realized_gain_pct >= 0 ? 'text-gain' : 'text-loss'}>
+        {formatPercent(r.realized_gain_pct / 100)}
+      </span>
+    ), numeric: true },
+  ]
+
+  const tradeCols: Column<TradeSummary>[] = [
+    { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date) },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
+    { key: 'action', header: 'Action', render: (r) => (
+      <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
+    )},
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
+    { key: 'price', header: 'Price', render: (r) => formatCurrency(r.price), numeric: true },
+    { key: 'commission', header: 'Commission', render: (r) => formatCurrency(r.commission), numeric: true },
+    { key: 'notes', header: 'Notes', render: (r) => <span className="text-stone">{r.notes}</span> },
+  ]
+
+  const summary = portfolioData?.summary
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-8">
+      {/* Header */}
+      <div className="flex items-start justify-between">
+        <div>
+          <p className="text-xs text-stone font-mono mb-1">
+            <Link to={`/app/clients/${clientId}`} className="hover:text-pine">{scope.clientName ?? 'Client'}</Link>
+            {' / '}
+            <Link to={`/app/clients/${clientId}/accounts/${accountId}`} className="hover:text-pine">{scope.accountName ?? 'Account'}</Link>
+            {' / '}SLEEVE
+          </p>
+          <h1 className="font-display text-3xl text-summit-ink">
+            {sleeve.strategy_name ?? sleeve.strategy_id}
+          </h1>
+        </div>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              await fetchPrices.mutateAsync({ clientId: clientId!, accountId: accountId!, sleeveId: sleeveId! })
+            }}
+            disabled={fetchPrices.isPending}
+            className="px-3 py-1.5 text-xs border border-stone/30 text-stone rounded-btn hover:border-pine hover:text-pine disabled:opacity-50"
+          >
+            {fetchPrices.isPending ? 'Fetching…' : 'Fetch prices'}
+          </button>
+          <button
+            onClick={() => {
+              setClient(clientId!, scope.clientName ?? '')
+              setAccount(accountId!, scope.accountName ?? '')
+              setSleeve(sleeveId!, sleeve.strategy_name ?? sleeve.strategy_id)
+              navigate('/app/performance')
+            }}
+            className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
+          >
+            View performance
+          </button>
+        </div>
+      </div>
+
+      {/* Portfolio summary */}
+      {summary && (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="border border-stone/20 rounded-card p-5">
+            <p className="text-xs text-stone mb-1">Market value</p>
+            <p className="font-mono text-xl text-summit-ink tabular-nums">{formatCurrency(summary.total_market_value)}</p>
+          </div>
+          <div className="border border-stone/20 rounded-card p-5">
+            <p className="text-xs text-stone mb-1">Cost basis</p>
+            <p className="font-mono text-xl text-summit-ink tabular-nums">{formatCurrency(summary.total_cost_basis)}</p>
+          </div>
+          <div className="border border-stone/20 rounded-card p-5">
+            <p className="text-xs text-stone mb-1">Unrealised gain</p>
+            <p className={`font-mono text-xl tabular-nums ${(summary.total_unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'}`}>
+              {formatCurrency(summary.total_unrealized_gain)}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tabs */}
+      <section className="border border-stone/20 rounded-card overflow-hidden">
+        <div className="flex border-b border-stone/20">
+          {(['positions', 'closed', 'trades'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-6 py-3 text-sm font-mono capitalize transition-colors ${
+                activeTab === tab
+                  ? 'text-pine border-b-2 border-pine bg-mist/30'
+                  : 'text-stone hover:text-summit-ink'
+              }`}
+            >
+              {tab === 'positions' ? 'Open positions' : tab === 'closed' ? 'Closed / Realised' : 'Trades'}
+            </button>
+          ))}
+          {activeTab === 'trades' && (
+            <div className="ml-auto px-4 flex items-center">
+              <button
+                onClick={() => setShowTradeForm(!showTradeForm)}
+                className="text-xs border border-pine text-pine px-3 py-1 rounded-btn hover:bg-pine hover:text-paper"
+              >
+                + Add trade
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="p-6">
+          {showTradeForm && activeTab === 'trades' && (
+            <form onSubmit={handleCreateTrade} className="mb-6 p-4 bg-mist/30 rounded-btn space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { label: 'Symbol', field: 'symbol', placeholder: 'AAPL' },
+                  { label: 'Date', field: 'trade_date', type: 'date' },
+                  { label: 'Quantity', field: 'quantity', type: 'number', placeholder: '100' },
+                  { label: 'Price', field: 'price', type: 'number', placeholder: '185.50' },
+                  { label: 'Commission', field: 'commission', type: 'number', placeholder: '0' },
+                ].map(({ label, field, type = 'text', placeholder }) => (
+                  <div key={field}>
+                    <label className="text-xs text-stone block mb-1">{label}</label>
+                    <input
+                      required={field !== 'commission'}
+                      type={type}
+                      value={(trade as Record<string, string>)[field]}
+                      onChange={(e) => setTrade({ ...trade, [field]: e.target.value })}
+                      placeholder={placeholder}
+                      step={type === 'number' ? 'any' : undefined}
+                      min={type === 'number' ? '0' : undefined}
+                      className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm focus:outline-none focus:border-pine"
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label className="text-xs text-stone block mb-1">Action</label>
+                  <select
+                    value={trade.action}
+                    onChange={(e) => setTrade({ ...trade, action: e.target.value as 'BUY' | 'SELL' })}
+                    className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm focus:outline-none focus:border-pine"
+                  >
+                    <option>BUY</option>
+                    <option>SELL</option>
+                  </select>
+                </div>
+              </div>
+              {tradeError && <p className="text-loss text-xs">{tradeError}</p>}
+              <div className="flex gap-2">
+                <button type="submit" disabled={createTrade.isPending}
+                  className="px-3 py-1.5 bg-pine text-paper text-xs rounded-btn disabled:opacity-50">
+                  {createTrade.isPending ? 'Saving…' : 'Add trade'}
+                </button>
+                <button type="button" onClick={() => setShowTradeForm(false)} className="text-stone text-xs">Cancel</button>
+              </div>
+            </form>
+          )}
+
+          {activeTab === 'positions' && (
+            <DataTable
+              columns={openPosCols}
+              rows={portfolioData?.positions ?? []}
+              getKey={(r) => r.id}
+              emptyMessage="No open positions. Add some trades first."
+            />
+          )}
+          {activeTab === 'closed' && (
+            <>
+              {closedPositions && (
+                <p className="text-sm font-mono text-stone mb-3">
+                  Total realised gain: {' '}
+                  <span className={closedPositions.total_realized_gain >= 0 ? 'text-gain' : 'text-loss'}>
+                    {formatCurrency(closedPositions.total_realized_gain)}
+                  </span>
+                </p>
+              )}
+              <DataTable
+                columns={closedCols}
+                rows={closedPositions?.positions ?? []}
+                getKey={(r) => `${r.symbol}-${r.sell_date}`}
+                emptyMessage="No closed positions yet."
+              />
+            </>
+          )}
+          {activeTab === 'trades' && (
+            <DataTable
+              columns={tradeCols}
+              rows={tradesData?.trades ?? []}
+              getKey={(r) => r.id}
+              emptyMessage="No trades yet. Add a trade above."
+            />
+          )}
+        </div>
+      </section>
+    </div>
+  )
+}
