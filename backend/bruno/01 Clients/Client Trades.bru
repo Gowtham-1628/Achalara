@@ -1,0 +1,21 @@
+meta {
+  name: Client Trades
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/trades?skip=0&limit=100
+  body: none
+  auth: none
+}
+
+params:query {
+  skip: 0
+  limit: 100
+}
+
+assert {
+  res.status: eq 200
+  res.body.client_id: eq {{clientId}}
+}

@@ -1,0 +1,20 @@
+meta {
+  name: Sleeve Positions
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/positions
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Returns current positions + portfolio summary for the sleeve. Uses persisted Position
+  prices when available (set via the Prices folder), otherwise falls back to cost basis.
+}

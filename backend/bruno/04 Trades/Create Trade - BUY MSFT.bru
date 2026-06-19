@@ -1,0 +1,33 @@
+meta {
+  name: Create Trade - BUY MSFT
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/trades/
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "sleeve_id": "{{sleeveId}}",
+    "trade_date": "2026-01-20",
+    "symbol": "MSFT",
+    "action": "BUY",
+    "quantity": 50,
+    "price": 300.00,
+    "commission": 5.00,
+    "notes": "Diversification"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.symbol: eq MSFT
+}

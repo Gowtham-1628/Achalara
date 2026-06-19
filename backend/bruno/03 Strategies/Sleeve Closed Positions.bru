@@ -1,0 +1,25 @@
+meta {
+  name: Sleeve Closed Positions
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/positions/closed
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Returns closed round-trips for the sleeve. Each SELL is paired with the
+  earliest unmatched BUY of the same symbol AND same quantity (within the
+  sleeve = strategy), producing one entry per pair with entry_price,
+  exit_price, matched_quantity, realized_gain, realized_gain_pct, opened_at
+  and closed_at, plus a total_realized_gain roll-up. A symbol can appear
+  multiple times (one row per round-trip). Unmatched buys stay in the open
+  positions endpoint; an unmatched sell is ignored.
+}

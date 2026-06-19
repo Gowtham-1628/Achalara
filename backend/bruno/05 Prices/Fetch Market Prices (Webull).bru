@@ -1,0 +1,22 @@
+meta {
+  name: Fetch Market Prices (Webull)
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/fetch-market-prices
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Pulls live prices from Webull for every symbol in the sleeve and persists them.
+  Without valid WEBULL_APP_KEY / WEBULL_APP_SECRET in .env this returns
+  status "partial" with fetched: 0 — still HTTP 200. Returns 400 only if the sleeve
+  has no trades.
+}

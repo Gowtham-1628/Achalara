@@ -1,0 +1,20 @@
+meta {
+  name: Client Positions
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/positions
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.client_id: eq {{clientId}}
+}
+
+docs {
+  Positions merged by symbol across every sleeve belonging to the client.
+}

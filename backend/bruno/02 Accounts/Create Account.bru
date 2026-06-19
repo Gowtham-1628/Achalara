@@ -1,0 +1,32 @@
+meta {
+  name: Create Account
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Brokerage - Main",
+    "description": "Primary taxable brokerage account",
+    "account_number": "58168069"
+  }
+}
+
+vars:post-response {
+  accountId: res.body.id
+}
+
+assert {
+  res.status: eq 201
+  res.body.client_id: eq {{clientId}}
+}

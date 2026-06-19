@@ -1,0 +1,33 @@
+meta {
+  name: Create Trade - SELL MSFT
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/trades/
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "sleeve_id": "{{sleeveId}}",
+    "trade_date": "2026-03-05",
+    "symbol": "MSFT",
+    "action": "SELL",
+    "quantity": 20,
+    "price": 330.00,
+    "commission": 5.00,
+    "notes": "Trim position"
+  }
+}
+
+assert {
+  res.status: eq 201
+  res.body.action: eq SELL
+}

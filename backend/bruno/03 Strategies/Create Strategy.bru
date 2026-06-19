@@ -1,0 +1,38 @@
+meta {
+  name: Create Strategy
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/strategies/
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "name": "Growth",
+    "description": "Long-only US equity growth strategy"
+  }
+}
+
+vars:post-response {
+  strategyId: res.body.id
+}
+
+assert {
+  res.status: eq 201
+  res.body.name: eq Growth
+}
+
+docs {
+  Creates a firm-wide (global) strategy DEFINITION. Apply it to an account by creating a
+  Sleeve (next request). Trades, positions and performance live at the sleeve level.
+
+  Names are unique case-insensitively — re-posting "Growth" (or "growth") returns 409.
+}

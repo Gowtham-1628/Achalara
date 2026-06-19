@@ -1,0 +1,34 @@
+meta {
+  name: Update Market Prices
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/market-prices
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "prices": {
+      "AAPL": 175.50,
+      "MSFT": 320.00
+    }
+  }
+}
+
+assert {
+  res.status: eq 200
+  res.body.status: eq success
+}
+
+docs {
+  Manually set current prices for the sleeve's symbols. Persists onto the Position rows,
+  so a subsequent "Sleeve Positions" call reflects market_value / unrealized_gain.
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Sleeve Performance
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/performance
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.level: eq sleeve
+  res.body.id: eq {{sleeveId}}
+}
+
+docs {
+  Sleeve-level performance: summary (MWR, TWR, total return, cost basis, market value) plus a
+  chart-ready value time-series. Optional query params start_date / end_date (YYYY-MM-DD).
+  With no trades it returns a zeroed summary and empty timeseries (200, not 400).
+}

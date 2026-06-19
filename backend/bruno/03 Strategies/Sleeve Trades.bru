@@ -1,0 +1,21 @@
+meta {
+  name: Sleeve Trades
+  type: http
+  seq: 7
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/trades?skip=0&limit=100
+  body: none
+  auth: none
+}
+
+params:query {
+  skip: 0
+  limit: 100
+}
+
+assert {
+  res.status: eq 200
+  res.body.sleeve_id: eq {{sleeveId}}
+}

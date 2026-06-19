@@ -1,0 +1,19 @@
+meta {
+  name: List Sleeves
+  type: http
+  seq: 4
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Lists every sleeve in the account, each with its strategy_id and strategy_name.
+}

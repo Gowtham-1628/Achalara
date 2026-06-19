@@ -1,0 +1,16 @@
+meta {
+  name: Get Account
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.id: eq {{accountId}}
+}

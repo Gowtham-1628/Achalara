@@ -1,0 +1,32 @@
+meta {
+  name: Sleeve Monthly Returns
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves/{{sleeveId}}/performance/monthly
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.months: isDefined
+  res.body.cumulative_return_pct: isDefined
+}
+
+docs {
+  Month-on-month return breakdown since inception for a sleeve.
+
+  Each month includes:
+    - start_value / end_value: portfolio value at month boundaries
+    - cash_in / cash_out: gross BUY / SELL amounts during the month
+    - net_cash_flow: cash_in - cash_out
+    - realized_gain: P&L from round-trips closed in the month
+    - return_pct: modified Dietz return (null for inception month and re-entry months)
+
+  cumulative_return_pct: geometric product of all non-null monthly returns.
+
+  Open positions are valued at live Webull prices fetched on each call.
+}

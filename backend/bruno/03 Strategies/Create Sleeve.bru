@@ -1,0 +1,35 @@
+meta {
+  name: Create Sleeve
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/sleeves
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "strategy_id": "{{strategyId}}"
+  }
+}
+
+vars:post-response {
+  sleeveId: res.body.id
+}
+
+assert {
+  res.status: eq 201
+  res.body.strategy_id: eq {{strategyId}}
+}
+
+docs {
+  Applies the global strategy to this account, creating the Sleeve that owns trades and
+  positions. Unique per (account, strategy) — a repeat returns 409. Captures sleeveId.
+}

@@ -1,0 +1,23 @@
+meta {
+  name: Client Performance
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/performance
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.level: eq client
+  res.body.id: eq {{clientId}}
+}
+
+docs {
+  Client-level roll-up of MWR/TWR computed on the MERGED cash-flow stream across every
+  sleeve in the client (not an average of child returns), plus per-account children and a
+  value time-series. Optional query params: start_date, end_date (YYYY-MM-DD).
+}
