@@ -1,10 +1,24 @@
 import { useScope } from '@/context/ScopeContext'
 import { useDateRange } from '@/context/DateRangeContext'
-import { useClientPerformance, useClientMonthlyPerformance } from '@/hooks/useClients'
-import { useAccountPerformance, useAccountMonthlyPerformance } from '@/hooks/useAccounts'
-import { useSleevePerformance, useSleeveMonthlyPerformance } from '@/hooks/useSleeves'
-import { useStrategyPerformance, useStrategyMonthlyPerformance } from '@/hooks/useStrategies'
+
+const PRESETS = [
+  { label: '1M',  months: 1 },
+  { label: '3M',  months: 3 },
+  { label: '6M',  months: 6 },
+  { label: '1Y',  months: 12 },
+  { label: '3Y',  months: 36 },
+  { label: 'MAX', months: null },
+] as const
+
+function toISODate(d: Date): string {
+  return d.toISOString().slice(0, 10)
+}
+import { useClientPerformance, useClientMonthlyPerformance, useClientReturnsSeries } from '@/hooks/useClients'
+import { useAccountPerformance, useAccountMonthlyPerformance, useAccountReturnsSeries } from '@/hooks/useAccounts'
+import { useSleevePerformance, useSleeveMonthlyPerformance, useSleeveReturnsSeries } from '@/hooks/useSleeves'
+import { useStrategyPerformance, useStrategyMonthlyPerformance, useStrategyReturnsSeries } from '@/hooks/useStrategies'
 import { PerformanceChart } from '@/components/PerformanceChart'
+import { ReturnsSeriesChart } from '@/components/ReturnsSeriesChart'
 import { MonthlyReturnsHeatmap } from '@/components/MonthlyReturnsHeatmap'
 import { LevelBreakdown } from '@/components/LevelBreakdown'
 import { EmptyState } from '@/components/EmptyState'
@@ -16,24 +30,11 @@ import type { LevelPerformance } from '@/api/types'
 
 function PerformanceHero({ perf }: { perf: LevelPerformance }) {
   const { summary, level, name } = perf
-  const gain = summary.total_current_value - summary.total_invested
-  const gainPos = gain >= 0
+  const gainPos = (summary.total_unrealized_gain ?? 0) >= 0
 
   return (
-    <div className="rounded-card p-8 bg-pine-deep text-paper mb-8 relative overflow-hidden">
-      {/* Decorative contour lines — aria-hidden, purely decorative */}
-      <svg
-        aria-hidden="true"
-        className="absolute inset-0 w-full h-full opacity-5 pointer-events-none"
-        viewBox="0 0 400 200"
-        preserveAspectRatio="xMidYMid slice"
-      >
-        {[20, 60, 100, 140, 180].map((y) => (
-          <ellipse key={y} cx="200" cy={y} rx="380" ry="40" fill="none" stroke="white" strokeWidth="1" />
-        ))}
-      </svg>
-
-      <div className="relative z-10">
+    <div className="rounded-card p-8 bg-pine-deep text-paper mb-8">
+      <div>
         <p className="text-xs font-mono tracking-widest text-mist/60 uppercase mb-1">
           {level} · {name}
         </p>
@@ -41,38 +42,38 @@ function PerformanceHero({ perf }: { perf: LevelPerformance }) {
           <div>
             <p className="text-xs text-mist/60 mb-1">TWR</p>
             <p className={`font-mono text-3xl font-medium tabular-nums ${
-              summary.twr != null && summary.twr >= 0 ? 'text-gain' : 'text-loss'
+              summary.twr_pct != null && summary.twr_pct >= 0 ? 'text-gain' : 'text-loss'
             }`}>
-              {summary.twr != null ? formatPercent(summary.twr) : '—'}
+              {summary.twr_pct != null ? formatPercent(summary.twr_pct) : '—'}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">Time Weighted</p>
           </div>
           <div>
             <p className="text-xs text-mist/60 mb-1">MWR</p>
             <p className={`font-mono text-3xl font-medium tabular-nums ${
-              summary.mwr != null && summary.mwr >= 0 ? 'text-gain' : 'text-loss'
+              summary.mwr_pct != null && summary.mwr_pct >= 0 ? 'text-gain' : 'text-loss'
             }`}>
-              {summary.mwr != null ? formatPercent(summary.mwr) : '—'}
+              {summary.mwr_pct != null ? formatPercent(summary.mwr_pct) : '—'}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">Money Weighted</p>
           </div>
           <div>
-            <p className="text-xs text-mist/60 mb-1">Current value</p>
+            <p className="text-xs text-mist/60 mb-1">Market value</p>
             <p className="font-mono text-2xl text-paper tabular-nums">
-              {formatCurrency(summary.total_current_value)}
+              {formatCurrency(summary.total_market_value)}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">
-              vs {formatCurrency(summary.total_invested)} invested
+              {formatCurrency(summary.total_cost_basis)} cost basis
             </p>
           </div>
           <div>
             <p className="text-xs text-mist/60 mb-1">Unrealised gain</p>
             <p className={`font-mono text-2xl tabular-nums ${gainPos ? 'text-gain' : 'text-loss'}`}>
-              {formatCurrency(gain)}
+              {formatCurrency(summary.total_unrealized_gain)}
             </p>
             <p className="text-xs text-mist/40 mt-0.5">
-              {summary.twr != null && summary.mwr != null
-                ? `TWR vs MWR: ${formatPercent(summary.twr - summary.mwr)}`
+              {summary.twr_pct != null && summary.mwr_pct != null
+                ? `TWR vs MWR: ${formatPercent(summary.twr_pct - summary.mwr_pct)}`
                 : 'Since inception'}
             </p>
           </div>
@@ -117,11 +118,48 @@ function useActiveMonthly() {
   return { data: undefined, isLoading: false, isError: false }
 }
 
+function useActiveReturnsSeries() {
+  const { scope } = useScope()
+  const client = useClientReturnsSeries(scope.clientId ?? '')
+  const account = useAccountReturnsSeries(scope.clientId ?? '', scope.accountId ?? '')
+  const sleeve = useSleeveReturnsSeries(scope.clientId ?? '', scope.accountId ?? '', scope.sleeveId ?? '')
+  const strategy = useStrategyReturnsSeries(scope.strategyId ?? '')
+
+  if (scope.level === 'sleeve') return sleeve
+  if (scope.level === 'account') return account
+  if (scope.level === 'strategy') return strategy
+  if (scope.level === 'client') return client
+  return { data: undefined }
+}
+
 export function PerformancePage() {
   const { scope } = useScope()
   const navigate = useNavigate()
+  const { startDate, endDate, setDateRange } = useDateRange()
   const { data: perf, isLoading, isError, refetch } = useActivePerformance()
   const { data: monthly } = useActiveMonthly()
+  const { data: returnsSeries } = useActiveReturnsSeries()
+
+  const applyPreset = (months: number | null) => {
+    if (months === null) {
+      setDateRange(undefined, undefined)
+    } else {
+      const end = new Date()
+      const start = new Date()
+      start.setMonth(start.getMonth() - months)
+      setDateRange(toISODate(start), toISODate(end))
+    }
+  }
+
+  const activePreset = (() => {
+    if (!startDate && !endDate) return 'MAX'
+    const end = endDate ? new Date(endDate) : new Date()
+    const start = startDate ? new Date(startDate) : null
+    if (!start) return null
+    const diffMonths = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
+    const match = PRESETS.find((p) => p.months === diffMonths)
+    return match?.label ?? null
+  })()
 
   if (!scope.level) {
     return (
@@ -159,11 +197,61 @@ export function PerformancePage() {
 
       {/* Timeseries chart */}
       <section className="bg-paper border border-stone/20 rounded-card p-6">
-        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">
-          Portfolio value over time
-        </h2>
-        <PerformanceChart data={perf.timeseries} />
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-mono uppercase tracking-wide text-stone">
+            Portfolio value over time
+          </h2>
+          <div className="flex gap-1">
+            {PRESETS.map((p) => (
+              <button
+                key={p.label}
+                onClick={() => applyPreset(p.months)}
+                className={`px-2.5 py-1 text-xs font-mono rounded transition-colors ${
+                  activePreset === p.label
+                    ? 'bg-pine text-paper'
+                    : 'text-stone hover:text-summit-ink hover:bg-mist'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <PerformanceChart data={perf.timeseries.filter((pt) => {
+          if (startDate && pt.date < startDate) return false
+          if (endDate && pt.date > endDate) return false
+          return true
+        })} />
       </section>
+
+      {/* TWR vs MWR returns series */}
+      {returnsSeries && returnsSeries.series.length > 0 && (
+        <section className="bg-paper border border-stone/20 rounded-card p-6">
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="text-sm font-mono uppercase tracking-wide text-stone">
+              TWR vs MWR — cumulative returns
+            </h2>
+            <div className="flex gap-4 text-xs font-mono text-stone">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-6 border-t-2 border-pine" />
+                TWR
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-6 border-t-2 border-dashed border-gold" />
+                MWR
+              </span>
+            </div>
+          </div>
+          <p className="text-xs text-stone/60 mb-4">
+            Weekly snapshots since inception · solid = time-weighted · dashed = money-weighted
+          </p>
+          <ReturnsSeriesChart data={returnsSeries.series.filter((pt) => {
+            if (startDate && pt.date < startDate) return false
+            if (endDate && pt.date > endDate) return false
+            return true
+          })} />
+        </section>
+      )}
 
       {/* Monthly heatmap */}
       {monthly && (
@@ -171,7 +259,7 @@ export function PerformancePage() {
           <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">
             Month-on-month returns
           </h2>
-          <MonthlyReturnsHeatmap monthlyReturns={monthly.monthly_returns} />
+          <MonthlyReturnsHeatmap monthlyReturns={monthly.months} />
         </section>
       )}
 

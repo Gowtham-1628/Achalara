@@ -197,6 +197,24 @@ def get_sleeve_performance(
 
 
 @router.get(
+    "/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance/returns-series",
+)
+def get_sleeve_returns_series(
+    client_id: str,
+    account_id: str,
+    sleeve_id: str,
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Weekly TWR + MWR timeseries for a sleeve."""
+    _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+    series = WeeklySnapshotService(db).returns_series([sleeve_id], start_date, end_date)
+    return {"level": "sleeve", "id": sleeve_id, "series": series}
+
+
+@router.get(
     "/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance/monthly",
     response_model=MonthlyReturnsResponse,
 )

@@ -30,4 +30,12 @@ def create_trade(trade: TradeCreate, db: Session = Depends(get_db)):
     db.add(db_trade)
     db.commit()
     db.refresh(db_trade)
+
+    # Recompute weekly snapshots for this sleeve from the new trade's week onward.
+    try:
+        from app.services.weekly_snapshot_service import WeeklySnapshotService
+        WeeklySnapshotService(db).recompute_from(trade.sleeve_id, trade.trade_date)
+    except Exception:
+        pass  # snapshot failure must never block trade creation
+
     return db_trade

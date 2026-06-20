@@ -111,6 +111,24 @@ def get_client_performance(
     }
 
 
+@router.get("/{client_id}/performance/returns-series")
+def get_client_returns_series(
+    client_id: str,
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Weekly TWR + MWR timeseries for a client (aggregated from sleeve snapshots)."""
+    client = db.query(Client).filter(Client.id == client_id).first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Client not found")
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+    svc = PerformanceService(db)
+    sleeve_ids = svc.sleeve_ids_for_client(client_id)
+    series = WeeklySnapshotService(db).returns_series(sleeve_ids, start_date, end_date)
+    return {"level": "client", "id": client_id, "series": series}
+
+
 @router.get("/{client_id}/performance/monthly", response_model=MonthlyReturnsResponse)
 def get_client_monthly_returns(
     client_id: str,

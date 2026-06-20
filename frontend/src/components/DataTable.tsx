@@ -4,7 +4,7 @@ export interface Column<T> {
   key: string
   header: string
   render: (row: T) => ReactNode
-  sortable?: boolean
+  sortValue?: (row: T) => string | number | null | undefined
   numeric?: boolean
 }
 
@@ -28,6 +28,19 @@ export function DataTable<T>({ columns, rows, getKey, emptyMessage = 'No data.' 
     }
   }
 
+  const sortedRows = (() => {
+    if (!sortKey) return rows
+    const col = columns.find((c) => c.key === sortKey)
+    if (!col?.sortValue) return rows
+    return [...rows].sort((a, b) => {
+      const av = col.sortValue!(a) ?? ''
+      const bv = col.sortValue!(b) ?? ''
+      if (av < bv) return sortDir === 'asc' ? -1 : 1
+      if (av > bv) return sortDir === 'asc' ? 1 : -1
+      return 0
+    })
+  })()
+
   if (!rows.length) {
     return <p className="text-stone text-sm py-8 text-center">{emptyMessage}</p>
   }
@@ -40,22 +53,25 @@ export function DataTable<T>({ columns, rows, getKey, emptyMessage = 'No data.' 
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`py-3 px-4 text-left text-xs font-mono uppercase tracking-wide text-stone font-normal
-                  ${col.numeric ? 'text-right' : ''}
-                  ${col.sortable ? 'cursor-pointer select-none hover:text-summit-ink' : ''}
-                `}
-                onClick={col.sortable ? () => handleSort(col.key) : undefined}
+                className={[
+                  'py-3 px-4 text-xs font-mono uppercase tracking-wide text-stone font-normal',
+                  col.numeric ? 'text-right' : 'text-left',
+                  col.sortValue ? 'cursor-pointer select-none hover:text-summit-ink' : '',
+                ].join(' ')}
+                onClick={col.sortValue ? () => handleSort(col.key) : undefined}
               >
                 {col.header}
-                {col.sortable && sortKey === col.key && (
-                  <span className="ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                {col.sortValue && (
+                  <span className="ml-1 inline-block w-3 text-center">
+                    {sortKey === col.key ? (sortDir === 'asc' ? '↑' : '↓') : <span className="text-stone/30">↕</span>}
+                  </span>
                 )}
               </th>
             ))}
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
+          {sortedRows.map((row) => (
             <tr
               key={getKey(row)}
               className="border-b border-stone/10 hover:bg-mist/50 transition-colors"

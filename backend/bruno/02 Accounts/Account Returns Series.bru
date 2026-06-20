@@ -1,0 +1,29 @@
+meta {
+  name: Account Returns Series
+  type: http
+  seq: 5
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/{{clientId}}/accounts/{{accountId}}/performance/returns-series
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.level: eq account
+  res.body.series: isDefined
+}
+
+docs {
+  Weekly TWR + MWR timeseries for an account, aggregated from per-sleeve weekly snapshots.
+
+  Each point in series[]:
+    - date: Monday ISO date (YYYY-MM-DD)
+    - twr_cumul: cumulative Time-Weighted Return from inception (decimal fraction)
+    - mwr_cumul: cumulative Money-Weighted Return (IRR holding-period) from inception
+
+  Supports optional query params: start_date, end_date (YYYY-MM-DD).
+  Run POST /admin/rebuild-snapshots first if series is empty.
+}

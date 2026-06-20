@@ -10,6 +10,8 @@ export const sleeveKeys = {
     ['sleeves', clientId, accountId, sleeveId, 'performance', start, end] as const,
   monthlyPerformance: (clientId: string, accountId: string, sleeveId: string) =>
     ['sleeves', clientId, accountId, sleeveId, 'performance', 'monthly'] as const,
+  returnsSeries: (clientId: string, accountId: string, sleeveId: string, start?: string, end?: string) =>
+    ['sleeves', clientId, accountId, sleeveId, 'performance', 'returns-series', start, end] as const,
   positions: (clientId: string, accountId: string, sleeveId: string) =>
     ['sleeves', clientId, accountId, sleeveId, 'positions'] as const,
   closedPositions: (clientId: string, accountId: string, sleeveId: string) =>
@@ -49,6 +51,17 @@ export function useSleeveMonthlyPerformance(clientId: string, accountId: string,
   return useQuery({
     queryKey: sleeveKeys.monthlyPerformance(clientId, accountId, sleeveId),
     queryFn: () => sleevesApi.getMonthlyPerformance(clientId, accountId, sleeveId),
+    enabled: !!clientId && !!accountId && !!sleeveId,
+  })
+}
+
+export function useSleeveReturnsSeries(
+  clientId: string, accountId: string, sleeveId: string,
+  params?: { start_date?: string; end_date?: string }
+) {
+  return useQuery({
+    queryKey: sleeveKeys.returnsSeries(clientId, accountId, sleeveId, params?.start_date, params?.end_date),
+    queryFn: () => sleevesApi.getReturnsSeries(clientId, accountId, sleeveId, params),
     enabled: !!clientId && !!accountId && !!sleeveId,
   })
 }

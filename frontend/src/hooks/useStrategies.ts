@@ -8,6 +8,8 @@ export const strategyKeys = {
   performance: (id: string, start?: string, end?: string) =>
     ['strategies', id, 'performance', start, end] as const,
   monthlyPerformance: (id: string) => ['strategies', id, 'performance', 'monthly'] as const,
+  returnsSeries: (id: string, start?: string, end?: string) =>
+    ['strategies', id, 'performance', 'returns-series', start, end] as const,
 }
 
 export function useStrategies() {
@@ -40,6 +42,17 @@ export function useStrategyMonthlyPerformance(strategyId: string) {
   return useQuery({
     queryKey: strategyKeys.monthlyPerformance(strategyId),
     queryFn: () => strategiesApi.getMonthlyPerformance(strategyId),
+    enabled: !!strategyId,
+  })
+}
+
+export function useStrategyReturnsSeries(
+  strategyId: string,
+  params?: { start_date?: string; end_date?: string }
+) {
+  return useQuery({
+    queryKey: strategyKeys.returnsSeries(strategyId, params?.start_date, params?.end_date),
+    queryFn: () => strategiesApi.getReturnsSeries(strategyId, params),
     enabled: !!strategyId,
   })
 }

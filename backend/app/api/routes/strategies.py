@@ -115,6 +115,25 @@ def get_strategy_performance(
     }
 
 
+@router.get("/{strategy_id}/performance/returns-series")
+def get_strategy_returns_series(
+    strategy_id: str,
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    db: Session = Depends(get_db),
+):
+    """Weekly TWR + MWR timeseries for a strategy (all sleeves running that strategy)."""
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if not strategy:
+        raise HTTPException(status_code=404, detail="Strategy not found")
+    sleeve_ids = [
+        s[0] for s in db.query(Sleeve.id).filter(Sleeve.strategy_id == strategy_id).all()
+    ]
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+    series = WeeklySnapshotService(db).returns_series(sleeve_ids, start_date, end_date)
+    return {"level": "strategy", "id": strategy_id, "series": series}
+
+
 @router.get("/{strategy_id}/performance/monthly", response_model=MonthlyReturnsResponse)
 def get_strategy_monthly_returns(
     strategy_id: str,

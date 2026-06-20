@@ -259,15 +259,20 @@ class PerformanceService:
                 if p["closed_at"] and date(year, month, 1) <= p["closed_at"] <= effective_end
             )
 
-            # Modified Dietz return: None for inception month (no prior value)
+            # Modified Dietz return
             is_inception = (year == first_date.year and month == first_date.month)
-            if is_inception or prev_end_value == 0:
+            net_invested = cash_in - cash_out
+            if is_inception:
+                # No prior value — can't compute a return
                 return_pct = None
+            elif prev_end_value == 0 and cash_in > 0:
+                # Portfolio was fully liquidated; treat cash_in as the opening base
+                # so fresh deployments show their gain rather than null
+                return_pct = ((end_value - net_invested) / cash_in * 100) if cash_in else None
+            elif prev_end_value > 0:
+                return_pct = ((end_value - prev_end_value - net_invested) / prev_end_value * 100)
             else:
-                # return = (end - start - net_cash_in) / start
-                net_invested = cash_in - cash_out
-                denom = prev_end_value
-                return_pct = ((end_value - prev_end_value - net_invested) / denom * 100) if denom else None
+                return_pct = None
 
             month_label = date(year, month, 1).strftime("%b %Y")
             months.append({

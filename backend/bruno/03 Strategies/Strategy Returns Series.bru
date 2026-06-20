@@ -1,0 +1,28 @@
+meta {
+  name: Strategy Returns Series
+  type: http
+  seq: 8
+}
+
+get {
+  url: {{baseUrl}}/api/v1/strategies/{{strategyId}}/performance/returns-series
+  body: none
+  auth: none
+}
+
+assert {
+  res.status: eq 200
+  res.body.level: eq strategy
+  res.body.series: isDefined
+}
+
+docs {
+  Weekly TWR + MWR timeseries for a strategy, aggregated from all sleeves running that strategy.
+
+  Each point in series[]:
+    - date: Monday ISO date (YYYY-MM-DD)
+    - twr_cumul: market-value-weighted cumulative TWR across all sleeves (decimal fraction)
+    - mwr_cumul: market-value-weighted cumulative MWR across all sleeves (decimal fraction)
+
+  Supports optional query params: start_date, end_date (YYYY-MM-DD).
+}

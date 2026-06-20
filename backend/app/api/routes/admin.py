@@ -116,6 +116,18 @@ def import_historical(
             response["message"] = f"Successfully imported {result['imported']} trades"
             response["sync_log_id"] = result["sync_log_id"]
 
+            # Recompute weekly snapshots for all affected sleeves.
+            try:
+                from app.services.weekly_snapshot_service import WeeklySnapshotService
+                svc = WeeklySnapshotService(db)
+                affected = result.get("affected_sleeve_ids", [])
+                if not affected and sleeve_id:
+                    affected = [sleeve_id]
+                for sid in affected:
+                    svc.rebuild_sleeve(sid)
+            except Exception:
+                pass
+
         return response
 
     except HTTPException:
@@ -166,6 +178,13 @@ def sync_daily(
             status_code=400,
             detail={"message": "Sync import failed", "errors": result["errors"][:10]},
         )
+
+    # Recompute weekly snapshots for the synced sleeve.
+    try:
+        from app.services.weekly_snapshot_service import WeeklySnapshotService
+        WeeklySnapshotService(db).rebuild_sleeve(sleeve_id)
+    except Exception:
+        pass
 
     return {
         "status": "success",
@@ -299,3 +318,37 @@ def delete_sync_config(config_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Sync config not found")
     db.delete(cfg)
     db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Weekly snapshot rebuild
+# ---------------------------------------------------------------------------
+
+
+@router.post("/rebuild-snapshots")
+def rebuild_snapshots(
+    sleeve_id: str = Query(None, description="Rebuild a single sleeve; omit for all sleeves"),
+    db: Session = Depends(get_db),
+):
+    """Rebuild weekly portfolio snapshots.
+
+    Recomputes all ``weekly_portfolio_snapshots`` rows from scratch.
+    Pass ``sleeve_id`` to rebuild only one sleeve; omit to rebuild every sleeve.
+    This is idempotent — safe to run after correcting historical trade data.
+    """
+    from app.services.weekly_snapshot_service import WeeklySnapshotService
+    svc = WeeklySnapshotService(db)
+    try:
+        if sleeve_id:
+            count = svc.rebuild_sleeve(sleeve_id)
+            return {"status": "success", "sleeves_rebuilt": 1, "snapshots_written": count}
+        else:
+            results = svc.rebuild_all()
+            return {
+                "status": "success",
+                "sleeves_rebuilt": len(results),
+                "snapshots_written": sum(results.values()),
+            }
+    except Exception as e:
+        logger.error(f"Snapshot rebuild failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Rebuild failed: {str(e)}")

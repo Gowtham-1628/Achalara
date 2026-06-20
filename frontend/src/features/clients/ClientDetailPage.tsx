@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useClient, useClientPositions, useClientTrades } from '@/hooks/useClients'
 import { useAccounts, useCreateAccount } from '@/hooks/useAccounts'
@@ -46,27 +47,27 @@ export function ClientDetailPage() {
   }
 
   const positionCols: Column<AggregatedPosition>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
-    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
-    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), numeric: true },
-    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), numeric: true },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
+    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
+    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
     { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (
       <span className={(r.unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'}>
         {formatCurrency(r.unrealized_gain)}
       </span>
-    ), numeric: true },
-    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, numeric: true },
+    ), sortValue: (r) => r.unrealized_gain ?? 0, numeric: true },
+    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, sortValue: (r) => r.unrealized_gain_pct ?? 0, numeric: true },
   ]
 
   const tradeCols: Column<TradeSummary>[] = [
-    { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date) },
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
+    { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date), sortValue: (r) => r.trade_date },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
     { key: 'action', header: 'Action', render: (r) => (
       <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
-    )},
-    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
-    { key: 'price', header: 'Price', render: (r) => formatCurrency(r.price), numeric: true },
-    { key: 'commission', header: 'Commission', render: (r) => formatCurrency(r.commission), numeric: true },
+    ), sortValue: (r) => r.action },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
+    { key: 'price', header: 'Price', render: (r) => formatCurrency(r.price), sortValue: (r) => r.price, numeric: true },
+    { key: 'commission', header: 'Commission', render: (r) => formatCurrency(r.commission), sortValue: (r) => r.commission, numeric: true },
   ]
 
   return (
@@ -79,7 +80,7 @@ export function ClientDetailPage() {
           <p className="text-stone text-sm mt-1">{client.email}</p>
         </div>
         <button
-          onClick={() => { setClient(client.id, client.name); navigate('/app/performance') }}
+          onClick={() => { flushSync(() => setClient(client.id, client.name)); navigate('/app/performance') }}
           className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
         >
           View performance

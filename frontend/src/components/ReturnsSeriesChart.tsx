@@ -1,12 +1,10 @@
 import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend,
 } from 'recharts'
-import type { TimeseriesPoint } from '@/api/types'
-import { formatCurrency } from '@/lib/formatters'
+import type { WeeklyReturnPoint } from '@/api/types'
 
 interface Props {
-  data: TimeseriesPoint[]
-  label?: string
+  data: WeeklyReturnPoint[]
 }
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -16,13 +14,15 @@ function fmtAxisDate(dateStr: string): string {
   return `${MONTH_ABBR[d.getUTCMonth()]} '${String(d.getUTCFullYear()).slice(2)}`
 }
 
-function pickTicks(data: TimeseriesPoint[]): string[] {
+function fmtPct(v: number): string {
+  const sign = v >= 0 ? '+' : ''
+  return `${sign}${(v * 100).toFixed(1)}%`
+}
+
+function pickTicks(data: WeeklyReturnPoint[]): string[] {
   if (data.length <= 1) return data.map((d) => d.date)
   const first = new Date(data[0].date)
   const last = new Date(data[data.length - 1].date)
-  const spanDays = (last.getTime() - first.getTime()) / 86_400_000
-
-  // Target ~6 evenly-spaced ticks; pick the data point closest to each target
   const targetCount = Math.min(6, data.length)
   const ticks: string[] = []
   for (let i = 0; i < targetCount; i++) {
@@ -36,15 +36,14 @@ function pickTicks(data: TimeseriesPoint[]): string[] {
     }
     if (!ticks.includes(best.date)) ticks.push(best.date)
   }
-  void spanDays // suppress unused warning
   return ticks
 }
 
-export function PerformanceChart({ data, label = 'Portfolio value over time' }: Props) {
+export function ReturnsSeriesChart({ data }: Props) {
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-48 text-stone text-sm">
-        No timeseries data available for this period.
+        No returns data yet — run a snapshot rebuild or add trades to populate this chart.
       </div>
     )
   }
@@ -52,8 +51,8 @@ export function PerformanceChart({ data, label = 'Portfolio value over time' }: 
   const ticks = pickTicks(data)
 
   return (
-    <div aria-label={label}>
-      <ResponsiveContainer width="100%" height={240}>
+    <div>
+      <ResponsiveContainer width="100%" height={260}>
         <LineChart data={data} margin={{ top: 4, right: 40, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#EAF0EC" />
           <XAxis
@@ -66,14 +65,17 @@ export function PerformanceChart({ data, label = 'Portfolio value over time' }: 
             interval={0}
           />
           <YAxis
-            tickFormatter={(v) => formatCurrency(v)}
+            tickFormatter={(v: number) => fmtPct(v)}
             tick={{ fontFamily: 'IBM Plex Mono', fontSize: 11, fill: '#8A968F' }}
             tickLine={false}
             axisLine={false}
-            width={90}
+            width={72}
           />
           <Tooltip
-            formatter={(v: number) => [formatCurrency(v), 'Value']}
+            formatter={(v: number, name: string) => [
+              fmtPct(v),
+              name === 'twr_cumul' ? 'TWR' : 'MWR',
+            ]}
             labelFormatter={fmtAxisDate}
             contentStyle={{
               fontFamily: 'IBM Plex Mono',
@@ -82,13 +84,28 @@ export function PerformanceChart({ data, label = 'Portfolio value over time' }: 
               borderRadius: 8,
             }}
           />
+          <Legend
+            formatter={(value) => (value === 'twr_cumul' ? 'TWR' : 'MWR')}
+            wrapperStyle={{ fontFamily: 'IBM Plex Mono', fontSize: 11, paddingTop: 8 }}
+          />
           <Line
             type="monotone"
-            dataKey="value"
+            dataKey="twr_cumul"
             stroke="#2F5D4A"
             strokeWidth={2}
             dot={false}
             activeDot={{ r: 4, fill: '#C9A24B' }}
+            connectNulls
+          />
+          <Line
+            type="monotone"
+            dataKey="mwr_cumul"
+            stroke="#C9A24B"
+            strokeWidth={2}
+            strokeDasharray="5 3"
+            dot={false}
+            activeDot={{ r: 4, fill: '#2F5D4A' }}
+            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>

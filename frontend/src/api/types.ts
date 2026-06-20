@@ -36,22 +36,31 @@ export interface TradeSummary {
 }
 
 export interface PerformanceSummary {
-  mwr: number | null; twr: number | null
-  total_invested: number; total_current_value: number
-  start_date: string | null; end_date: string | null
+  mwr_pct: number | null; twr_pct: number | null; twr_note: string | null
+  total_return_pct: number | null
+  total_cost_basis: number; total_market_value: number; total_unrealized_gain: number
+  total_invested: number; total_proceeds: number; total_realized_gain: number
+  closed_positions_count: number; trades_count: number
 }
-export interface PerformanceChild { id: string; name: string; summary: PerformanceSummary }
-export interface TimeseriesPoint { date: string; value: number }
+export interface PerformanceChild { level: string; id: string; name: string | null; summary: PerformanceSummary }
+export interface TimeseriesPoint { date: string; value: number; cost_basis: number }
 export interface LevelPerformance {
   level: string; id: string; name: string
+  start_date: string | null; end_date: string | null
   summary: PerformanceSummary
   timeseries: TimeseriesPoint[]
   children: PerformanceChild[]
 }
 
-export interface MonthlyReturn { year: number; month: number; return: number }
+export interface MonthlyReturn {
+  year: number; month: number; month_label: string
+  start_value: number; end_value: number
+  cash_in: number; cash_out: number; net_cash_flow: number
+  realized_gain: number; return_pct: number | null
+}
 export interface MonthlyReturnsResponse {
-  level: string; id: string; name: string; monthly_returns: MonthlyReturn[]
+  months: MonthlyReturn[]
+  cumulative_return_pct: number | null
 }
 
 export interface AggregatedPosition {
@@ -86,8 +95,10 @@ export interface PortfolioValueResponse {
 }
 
 export interface ClosedPosition {
-  symbol: string; quantity: number; buy_date: string; sell_date: string
-  cost_basis: number; proceeds: number; realized_gain: number; realized_gain_pct: number
+  symbol: string; status: string
+  matched_quantity: number | null; entry_price: number | null; exit_price: number | null
+  realized_gain: number; realized_gain_pct: number
+  opened_at: string | null; closed_at: string | null; trades_count: number
 }
 export interface ClosedPositionsResponse {
   sleeve_id: string; total_realized_gain: number; positions: ClosedPosition[]
@@ -131,3 +142,14 @@ export interface SyncConfigCreate {
   sleeve_id: string; sheet_id: string; range_name: string; enabled?: boolean
 }
 export interface SyncConfigUpdate { enabled: boolean }
+
+export interface WeeklyReturnPoint {
+  date: string          // ISO date (Monday)
+  twr_cumul: number | null
+  mwr_cumul: number | null
+}
+export interface ReturnsSeriesResponse {
+  level: 'client' | 'account' | 'sleeve' | 'strategy'
+  id: string
+  series: WeeklyReturnPoint[]
+}

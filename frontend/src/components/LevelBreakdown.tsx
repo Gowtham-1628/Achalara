@@ -20,36 +20,35 @@ export function LevelBreakdown({ children, makeHref, label }: Props) {
         <Link
           key={child.id}
           to={makeHref(child)}
-          className="flex items-center justify-between py-4 px-2 hover:bg-mist/50 rounded transition-colors group"
+          className="grid grid-cols-5 items-center py-4 px-2 hover:bg-mist/50 rounded transition-colors group gap-4"
         >
-          <div>
+          {/* Name + market value */}
+          <div className="col-span-2">
             <p className="font-medium text-summit-ink group-hover:text-pine transition-colors">
               {child.name}
             </p>
-            <p className="text-xs text-stone font-mono">
-              {formatCurrency(child.summary.total_current_value)} invested value
+            <p className="text-xs text-stone font-mono mt-0.5">
+              {formatCurrency(child.summary.total_market_value)} market value
             </p>
           </div>
-          <div className="text-right space-y-0.5">
-            <div className="flex gap-4 items-center justify-end">
-              <div>
-                <p className="text-xs text-stone">MWR</p>
-                <GainBadge value={child.summary.mwr} />
-              </div>
-              <div>
-                <p className="text-xs text-stone">TWR</p>
-                <GainBadge value={child.summary.twr} />
-              </div>
-              <div>
-                <p className="text-xs text-stone">Gain</p>
-                <span className={`font-mono text-sm ${
-                  (child.summary.total_current_value - child.summary.total_invested) >= 0
-                    ? 'text-gain' : 'text-loss'
-                }`}>
-                  {formatCurrency(child.summary.total_current_value - child.summary.total_invested)}
-                </span>
-              </div>
-            </div>
+          {/* MWR */}
+          <div>
+            <p className="text-xs text-stone mb-0.5">MWR</p>
+            <GainBadge value={child.summary.mwr_pct} />
+          </div>
+          {/* TWR */}
+          <div>
+            <p className="text-xs text-stone mb-0.5">TWR</p>
+            <GainBadge value={child.summary.twr_pct} />
+          </div>
+          {/* Unrealised gain */}
+          <div className="text-right">
+            <p className="text-xs text-stone mb-0.5">Unrealised gain</p>
+            <span className={`font-mono text-sm ${
+              (child.summary.total_unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'
+            }`}>
+              {formatCurrency(child.summary.total_unrealized_gain)}
+            </span>
           </div>
         </Link>
       ))}

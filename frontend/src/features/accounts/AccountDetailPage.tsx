@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useAccount, useAccountPositions } from '@/hooks/useAccounts'
 import { useSleeves, useCreateSleeve } from '@/hooks/useSleeves'
@@ -55,15 +56,15 @@ export function AccountDetailPage() {
   ]
 
   const posCols: Column<AggregatedPosition>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
-    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
-    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), numeric: true },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
+    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
     { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (
       <span className={(r.unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'}>
         {formatCurrency(r.unrealized_gain)}
       </span>
-    ), numeric: true },
-    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, numeric: true },
+    ), sortValue: (r) => r.unrealized_gain ?? 0, numeric: true },
+    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, sortValue: (r) => r.unrealized_gain_pct ?? 0, numeric: true },
   ]
 
   return (
@@ -80,7 +81,7 @@ export function AccountDetailPage() {
           )}
         </div>
         <button
-          onClick={() => { setClient(clientId!, scope.clientName ?? ''); setAccount(accountId!, account.name); navigate('/app/performance') }}
+          onClick={() => { flushSync(() => { setClient(clientId!, scope.clientName ?? ''); setAccount(accountId!, account.name) }); navigate('/app/performance') }}
           className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
         >
           View performance

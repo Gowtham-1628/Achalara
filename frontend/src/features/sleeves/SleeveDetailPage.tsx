@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { useParams, Link, useNavigate } from 'react-router-dom'
 import { useSleeve, useSleevePositions, useSleeveClosedPositions, useSleeveTrades, useFetchMarketPrices } from '@/hooks/useSleeves'
 import { useScope } from '@/context/ScopeContext'
@@ -57,48 +58,48 @@ export function SleeveDetailPage() {
   }
 
   const openPosCols: Column<PositionResponse>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
-    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
-    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), numeric: true },
-    { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), numeric: true },
-    { key: 'current_price', header: 'Price', render: (r) => formatCurrency(r.current_price), numeric: true },
-    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), numeric: true },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
+    { key: 'avg_cost', header: 'Avg cost', render: (r) => formatCurrency(r.avg_cost), sortValue: (r) => r.avg_cost, numeric: true },
+    { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), sortValue: (r) => r.cost_basis, numeric: true },
+    { key: 'current_price', header: 'Price', render: (r) => formatCurrency(r.current_price), sortValue: (r) => r.current_price ?? 0, numeric: true },
+    { key: 'market_value', header: 'Market value', render: (r) => formatCurrency(r.market_value), sortValue: (r) => r.market_value ?? 0, numeric: true },
     { key: 'unrealized_gain', header: 'Unrealised gain', render: (r) => (
       <span className={(r.unrealized_gain ?? 0) >= 0 ? 'text-gain' : 'text-loss'}>
         {formatCurrency(r.unrealized_gain)}
       </span>
-    ), numeric: true },
-    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, numeric: true },
+    ), sortValue: (r) => r.unrealized_gain ?? 0, numeric: true },
+    { key: 'unrealized_gain_pct', header: '% Gain', render: (r) => <GainBadge value={r.unrealized_gain_pct != null ? r.unrealized_gain_pct / 100 : null} />, sortValue: (r) => r.unrealized_gain_pct ?? 0, numeric: true },
   ]
 
   const closedCols: Column<ClosedPosition>[] = [
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
-    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
-    { key: 'buy_date', header: 'Bought', render: (r) => formatDate(r.buy_date) },
-    { key: 'sell_date', header: 'Sold', render: (r) => formatDate(r.sell_date) },
-    { key: 'cost_basis', header: 'Cost basis', render: (r) => formatCurrency(r.cost_basis), numeric: true },
-    { key: 'proceeds', header: 'Proceeds', render: (r) => formatCurrency(r.proceeds), numeric: true },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
+    { key: 'matched_quantity', header: 'Qty', render: (r) => r.matched_quantity ?? '—', sortValue: (r) => r.matched_quantity ?? 0, numeric: true },
+    { key: 'opened_at', header: 'Opened', render: (r) => r.opened_at ? formatDate(r.opened_at) : '—', sortValue: (r) => r.opened_at ?? '' },
+    { key: 'closed_at', header: 'Closed', render: (r) => r.closed_at ? formatDate(r.closed_at) : '—', sortValue: (r) => r.closed_at ?? '' },
+    { key: 'entry_price', header: 'Entry', render: (r) => r.entry_price != null ? formatCurrency(r.entry_price) : '—', sortValue: (r) => r.entry_price ?? 0, numeric: true },
+    { key: 'exit_price', header: 'Exit', render: (r) => r.exit_price != null ? formatCurrency(r.exit_price) : '—', sortValue: (r) => r.exit_price ?? 0, numeric: true },
     { key: 'realized_gain', header: 'Realised gain', render: (r) => (
       <span className={r.realized_gain >= 0 ? 'text-gain' : 'text-loss'}>
         {formatCurrency(r.realized_gain)}
       </span>
-    ), numeric: true },
+    ), sortValue: (r) => r.realized_gain, numeric: true },
     { key: 'realized_gain_pct', header: '% Gain', render: (r) => (
       <span className={r.realized_gain_pct >= 0 ? 'text-gain' : 'text-loss'}>
         {formatPercent(r.realized_gain_pct / 100)}
       </span>
-    ), numeric: true },
+    ), sortValue: (r) => r.realized_gain_pct, numeric: true },
   ]
 
   const tradeCols: Column<TradeSummary>[] = [
-    { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date) },
-    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span> },
+    { key: 'trade_date', header: 'Date', render: (r) => formatDate(r.trade_date), sortValue: (r) => r.trade_date },
+    { key: 'symbol', header: 'Symbol', render: (r) => <span className="font-medium">{r.symbol}</span>, sortValue: (r) => r.symbol },
     { key: 'action', header: 'Action', render: (r) => (
       <span className={r.action === 'BUY' ? 'text-pine' : 'text-loss'}>{r.action}</span>
-    )},
-    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, numeric: true },
-    { key: 'price', header: 'Price', render: (r) => formatCurrency(r.price), numeric: true },
-    { key: 'commission', header: 'Commission', render: (r) => formatCurrency(r.commission), numeric: true },
+    ), sortValue: (r) => r.action },
+    { key: 'quantity', header: 'Qty', render: (r) => r.quantity, sortValue: (r) => r.quantity, numeric: true },
+    { key: 'price', header: 'Price', render: (r) => formatCurrency(r.price), sortValue: (r) => r.price, numeric: true },
+    { key: 'commission', header: 'Commission', render: (r) => formatCurrency(r.commission), sortValue: (r) => r.commission, numeric: true },
     { key: 'notes', header: 'Notes', render: (r) => <span className="text-stone">{r.notes}</span> },
   ]
 
@@ -131,9 +132,11 @@ export function SleeveDetailPage() {
           </button>
           <button
             onClick={() => {
-              setClient(clientId!, scope.clientName ?? '')
-              setAccount(accountId!, scope.accountName ?? '')
-              setSleeve(sleeveId!, sleeve.strategy_name ?? sleeve.strategy_id)
+              flushSync(() => {
+                setClient(clientId!, scope.clientName ?? '')
+                setAccount(accountId!, scope.accountName ?? '')
+                setSleeve(sleeveId!, sleeve.strategy_name ?? sleeve.strategy_id)
+              })
               navigate('/app/performance')
             }}
             className="px-4 py-2 bg-gold text-summit-ink text-sm font-medium rounded-btn hover:opacity-90"
@@ -260,7 +263,7 @@ export function SleeveDetailPage() {
               <DataTable
                 columns={closedCols}
                 rows={closedPositions?.positions ?? []}
-                getKey={(r) => `${r.symbol}-${r.sell_date}`}
+                getKey={(r) => `${r.symbol}-${r.closed_at}`}
                 emptyMessage="No closed positions yet."
               />
             </>

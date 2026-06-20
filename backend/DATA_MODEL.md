@@ -10,7 +10,8 @@ Client ──< Account ──< Sleeve >── Strategy        (Sleeve = account 
                           │
                           ├──< Trade
                           ├──< Position
-                          └──< SheetSyncConfig
+                          ├──< SheetSyncConfig
+                          └──< WeeklyPortfolioSnapshot
 
 SyncLog                                            (standalone import/sync audit trail)
 ```
@@ -32,6 +33,7 @@ erDiagram
     SLEEVE ||--o{ TRADE : has
     SLEEVE ||--o{ POSITION : has
     SLEEVE ||--o{ SHEET_SYNC_CONFIG : feeds
+    SLEEVE ||--o{ WEEKLY_PORTFOLIO_SNAPSHOT : snapshots
 
     CLIENT {
         string id PK
@@ -96,6 +98,19 @@ erDiagram
         int rows_success
         int rows_failed
         json error_details
+    }
+    WEEKLY_PORTFOLIO_SNAPSHOT {
+        string id PK
+        string sleeve_id FK
+        date week_start_date
+        float twr_period
+        float twr_cumul
+        float mwr_cumul
+        float cost_basis
+        float market_value
+        float cash_in
+        float cash_out
+        float realized_gain
     }
 ```
 
@@ -207,6 +222,27 @@ Client is derived via `sleeve → account.client_id` (the old `client_id` column
 
 Standalone audit trail — no FK to the entity hierarchy.
 
+### `weekly_portfolio_snapshots`
+| Column | Type | Notes |
+|---|---|---|
+| id | String(36) PK | uuid |
+| sleeve_id | String(36) FK→sleeves.id | not null, **ON DELETE CASCADE** |
+| week_start_date | Date | not null; always a **Monday** |
+| twr_period | Float | nullable; modified-Dietz HPR for this single week |
+| twr_cumul | Float | nullable; geometric-linked TWR from inception to this Monday |
+| mwr_cumul | Float | nullable; IRR (holding-period) from inception to this Monday |
+| cost_basis | Float | open-position cost basis at Monday close |
+| market_value | Float | open-position market value at Monday close (last-trade price) |
+| cash_in | Float | gross BUY notional during the week |
+| cash_out | Float | gross SELL proceeds during the week |
+| realized_gain | Float | net realized P&L from round-trips closed during the week |
+
+Constraints: `UNIQUE(sleeve_id, week_start_date)` — one snapshot per sleeve per Monday.
+
+**Write path:** upserted automatically after any trade write (`POST /trades`) or import/sync. Full rebuild available via `POST /admin/rebuild-snapshots`. The `WeeklySnapshotService` walks all Mondays from the sleeve's first trade date. Snapshots are stored per-sleeve; at read time `WeeklySnapshotService.returns_series()` aggregates across the requested sleeve set (account / client / strategy) using market-value weighting for TWR and MWR.
+
+**Migration:** `afc155b89ef6_add_weekly_portfolio_snapshots`.
+
 ## Performance roll-ups
 
 Returns are computed by resolving a level to its set of sleeve ids and running one calc over
@@ -220,6 +256,21 @@ the **merged** trade stream (not by averaging child returns):
 | Strategy | all sleeves where `sleeve.strategy_id = s` | `GET /strategies/{s}/performance` |
 
 Each returns `{ level, id, name, summary, timeseries, children }`.
+
+### Weekly returns series
+
+Persisted snapshots power a separate weekly TWR + MWR chart endpoint:
+
+| Level | Endpoint |
+|---|---|
+| Sleeve | `GET /clients/{c}/accounts/{a}/sleeves/{s}/performance/returns-series` |
+| Account | `GET /clients/{c}/accounts/{a}/performance/returns-series` |
+| Client | `GET /clients/{c}/performance/returns-series` |
+| Strategy | `GET /strategies/{s}/performance/returns-series` |
+
+Each returns `{ level, id, series: [{ date, twr_cumul, mwr_cumul }] }` where values are decimal
+fractions (0.05 = 5%). Supports optional `start_date` / `end_date` query params.
+Rebuild all snapshots: `POST /admin/rebuild-snapshots` (pass `sleeve_id` to scope to one sleeve).
 
 ## Notes / known trade-offs
 

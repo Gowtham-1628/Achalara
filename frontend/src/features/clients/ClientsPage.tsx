@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
 import { useLoginClient, useCreateClient } from '@/hooks/useClients'
 import { loadKnownClients, saveKnownClient } from '@/lib/constants'
@@ -62,7 +63,7 @@ export function ClientsPage() {
   }
 
   const selectClient = (client: ClientResponse) => {
-    setClient(client.id, client.name)
+    flushSync(() => setClient(client.id, client.name))
     navigate('/app/performance')
   }
 

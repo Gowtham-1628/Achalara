@@ -202,6 +202,35 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/clients/{client_id}/performance/returns-series:
+    get:
+      tags: [clients]
+      summary: Weekly TWR + MWR timeseries for a client
+      operationId: getClientReturnsSeries
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Weekly returns series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnsSeriesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/clients/{client_id}/positions:
     get:
       tags: [clients]
@@ -339,6 +368,36 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/clients/{client_id}/accounts/{account_id}/performance/returns-series:
+    get:
+      tags: [accounts]
+      summary: Weekly TWR + MWR timeseries for an account
+      operationId: getAccountReturnsSeries
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Weekly returns series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnsSeriesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/clients/{client_id}/accounts/{account_id}/positions:
     get:
       tags: [accounts]
@@ -465,6 +524,37 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/MonthlyReturnsResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/performance/returns-series:
+    get:
+      tags: [sleeves]
+      summary: Weekly TWR + MWR timeseries for a sleeve
+      operationId: getSleeveReturnsSeries
+      parameters:
+        - $ref: "#/components/parameters/client_id"
+        - $ref: "#/components/parameters/account_id"
+        - $ref: "#/components/parameters/sleeve_id"
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Weekly returns series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnsSeriesResponse"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -672,6 +762,68 @@ paths:
                 $ref: "#/components/schemas/MonthlyReturnsResponse"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  /api/v1/strategies/{strategy_id}/performance/returns-series:
+    get:
+      tags: [strategies]
+      summary: Weekly TWR + MWR timeseries for a strategy
+      operationId: getStrategyReturnsSeries
+      parameters:
+        - $ref: "#/components/parameters/strategy_id"
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Weekly returns series
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReturnsSeriesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/admin/rebuild-snapshots:
+    post:
+      tags: [admin]
+      summary: Rebuild weekly portfolio snapshots
+      description: |
+        Recomputes all `weekly_portfolio_snapshots` from scratch.
+        Pass `sleeve_id` to rebuild only one sleeve; omit to rebuild all sleeves.
+        Safe to run after correcting historical trade data.
+      operationId: rebuildSnapshots
+      parameters:
+        - name: sleeve_id
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional. Rebuild only this sleeve.
+      responses:
+        "200":
+          description: Rebuild result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  sleeves_rebuilt:
+                    type: integer
+                  snapshots_written:
+                    type: integer
+        "500":
+          description: Internal error during rebuild
 
   # ─── Trades ─────────────────────────────────────────────────────────────────
 
@@ -1363,22 +1515,31 @@ components:
       properties:
         symbol:
           type: string
-        buy_date:
+        status:
           type: string
-          format: date
-        sell_date:
-          type: string
-          format: date
-        quantity:
+        matched_quantity:
           type: number
-        avg_cost:
+          nullable: true
+        entry_price:
           type: number
-        sell_price:
+          nullable: true
+        exit_price:
           type: number
+          nullable: true
         realized_gain:
           type: number
         realized_gain_pct:
           type: number
+        opened_at:
+          type: string
+          format: date
+          nullable: true
+        closed_at:
+          type: string
+          format: date
+          nullable: true
+        trades_count:
+          type: integer
 
     PortfolioSummary:
       type: object
@@ -1434,34 +1595,47 @@ components:
     PerformanceSummary:
       type: object
       properties:
-        mwr:
+        mwr_pct:
           type: number
           nullable: true
           description: Money Weighted Return (IRR) as a decimal (e.g. 0.12 = 12%)
-        twr:
+        twr_pct:
           type: number
           nullable: true
           description: Time Weighted Return (geometric linking) as a decimal
+        twr_note:
+          type: string
+          nullable: true
+        total_return_pct:
+          type: number
+          nullable: true
+        total_cost_basis:
+          type: number
+        total_market_value:
+          type: number
+        total_unrealized_gain:
+          type: number
         total_invested:
           type: number
-        total_current_value:
+        total_proceeds:
           type: number
-        start_date:
-          type: string
-          format: date
-          nullable: true
-        end_date:
-          type: string
-          format: date
-          nullable: true
+        total_realized_gain:
+          type: number
+        closed_positions_count:
+          type: integer
+        trades_count:
+          type: integer
 
     ChildPerformance:
       type: object
       properties:
+        level:
+          type: string
         id:
           type: string
         name:
           type: string
+          nullable: true
         summary:
           $ref: "#/components/schemas/PerformanceSummary"
 
@@ -1475,6 +1649,14 @@ components:
           type: string
         name:
           type: string
+        start_date:
+          type: string
+          format: date
+          nullable: true
+        end_date:
+          type: string
+          format: date
+          nullable: true
         summary:
           $ref: "#/components/schemas/PerformanceSummary"
         timeseries:
@@ -1493,24 +1675,66 @@ components:
           type: integer
         month:
           type: integer
-        return:
+        month_label:
+          type: string
+        start_value:
+          type: number
+        end_value:
+          type: number
+        cash_in:
+          type: number
+        cash_out:
+          type: number
+        net_cash_flow:
+          type: number
+        realized_gain:
+          type: number
+        return_pct:
           type: number
           nullable: true
-          description: Monthly return as a decimal (e.g. 0.034 = 3.4%)
+          description: Monthly return as a decimal (e.g. 0.034 = 3.4%); null for inception month
 
     MonthlyReturnsResponse:
       type: object
       properties:
-        level:
-          type: string
-        id:
-          type: string
-        name:
-          type: string
-        monthly_returns:
+        months:
           type: array
           items:
             $ref: "#/components/schemas/MonthlyReturn"
+        cumulative_return_pct:
+          type: number
+          nullable: true
+
+    # ── Weekly Returns Series ────────────────────────────────────────────────
+
+    WeeklyReturnPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+          description: Monday of the snapshot week
+        twr_cumul:
+          type: number
+          nullable: true
+          description: Cumulative TWR from inception to this week (decimal, e.g. 0.05 = 5%)
+        mwr_cumul:
+          type: number
+          nullable: true
+          description: Cumulative MWR (IRR holding-period) from inception to this week
+
+    ReturnsSeriesResponse:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [client, account, sleeve, strategy]
+        id:
+          type: string
+        series:
+          type: array
+          items:
+            $ref: "#/components/schemas/WeeklyReturnPoint"
 
     # ── Market Prices ────────────────────────────────────────────────────────
 

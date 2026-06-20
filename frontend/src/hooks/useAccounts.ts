@@ -9,6 +9,8 @@ export const accountKeys = {
     ['accounts', clientId, accountId, 'performance', start, end] as const,
   monthlyPerformance: (clientId: string, accountId: string) =>
     ['accounts', clientId, accountId, 'performance', 'monthly'] as const,
+  returnsSeries: (clientId: string, accountId: string, start?: string, end?: string) =>
+    ['accounts', clientId, accountId, 'performance', 'returns-series', start, end] as const,
   positions: (clientId: string, accountId: string) =>
     ['accounts', clientId, accountId, 'positions'] as const,
 }
@@ -45,6 +47,18 @@ export function useAccountMonthlyPerformance(clientId: string, accountId: string
   return useQuery({
     queryKey: accountKeys.monthlyPerformance(clientId, accountId),
     queryFn: () => accountsApi.getMonthlyPerformance(clientId, accountId),
+    enabled: !!clientId && !!accountId,
+  })
+}
+
+export function useAccountReturnsSeries(
+  clientId: string,
+  accountId: string,
+  params?: { start_date?: string; end_date?: string }
+) {
+  return useQuery({
+    queryKey: accountKeys.returnsSeries(clientId, accountId, params?.start_date, params?.end_date),
+    queryFn: () => accountsApi.getReturnsSeries(clientId, accountId, params),
     enabled: !!clientId && !!accountId,
   })
 }
