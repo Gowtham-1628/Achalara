@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from '@/components/AppShell'
+import { HomePage } from '@/features/HomePage'
 import { PerformancePage } from '@/features/performance/PerformancePage'
 import { ClientsPage } from '@/features/clients/ClientsPage'
 import { ClientDetailPage } from '@/features/clients/ClientDetailPage'
@@ -15,7 +16,7 @@ import { GrowPage } from '@/features/GrowPage'
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/" element={<Navigate to="/app/performance" replace />} />
+      <Route path="/" element={<HomePage />} />
       <Route path="/app" element={<AppShell />}>
         <Route index element={<Navigate to="performance" replace />} />
         <Route path="performance" element={<PerformancePage />} />
@@ -30,7 +31,7 @@ export function AppRoutes() {
         <Route path="risk" element={<RiskPage />} />
         <Route path="grow" element={<GrowPage />} />
       </Route>
-      <Route path="*" element={<Navigate to="/app/performance" replace />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }
