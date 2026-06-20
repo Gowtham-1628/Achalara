@@ -34,10 +34,14 @@ class PerformanceSummary(BaseModel):
 class ChildPerformance(BaseModel):
     """A child entity's headline summary within a roll-up."""
 
-    level: str  # "sleeve" or "account"
+    level: str  # "sleeve", "account"
     id: str
     name: Optional[str] = None
     summary: PerformanceSummary
+    # Populated only when level == "sleeve" and the parent is a strategy,
+    # so the frontend can build the full drill-down URL.
+    account_id: Optional[str] = None
+    client_id: Optional[str] = None
 
 
 class MonthlyReturn(BaseModel):

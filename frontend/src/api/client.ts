@@ -15,8 +15,14 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (res) => res,
   (err) => {
-    const message =
-      err.response?.data?.detail ?? err.message ?? 'Unknown error'
+    const detail = err.response?.data?.detail
+    let message: string
+    if (Array.isArray(detail)) {
+      // FastAPI 422 validation errors: [{loc, msg, type}]
+      message = detail.map((d: { msg?: string }) => d.msg ?? String(d)).join('; ')
+    } else {
+      message = detail ?? err.message ?? 'Unknown error'
+    }
     return Promise.reject(new Error(String(message)))
   }
 )

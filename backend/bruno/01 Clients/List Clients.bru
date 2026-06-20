@@ -1,0 +1,29 @@
+meta {
+  name: List Clients
+  type: http
+  seq: 3
+}
+
+get {
+  url: {{baseUrl}}/api/v1/clients/
+  body: none
+  auth: none
+}
+
+params:query {
+  skip: 0
+  limit: 100
+}
+
+assert {
+  res.status: eq 200
+  res.body: isArray
+}
+
+docs {
+  List all clients with optional pagination (skip / limit).
+  Returns an array of ClientResponse objects ordered by creation date.
+
+  This is the primary data source for the Clients page — replaces the previous
+  localStorage-only workaround documented in BACKEND_GAPS.md (gap #1, now resolved).
+}

@@ -1,4 +1,5 @@
 """Tests for global strategy definition endpoints"""
+from tests.conftest import create_test_strategy
 
 
 class TestStrategyDefinitionEndpoints:
@@ -46,6 +47,27 @@ class TestStrategyDefinitionEndpoints:
         """Fetching a missing strategy returns 404"""
         response = client.get("/api/v1/strategies/does-not-exist")
         assert response.status_code == 404
+
+    def test_strategy_performance_children_have_drill_down_ids(self, client):
+        """Strategy performance children include account_id and client_id for drill-down."""
+        client_id, account_id, _ = create_test_strategy(
+            client,
+            client_name="Drilldown Client",
+            client_email="drilldown@example.com",
+            strategy_name="Drilldown Strategy",
+        )
+
+        # Get strategy performance — need the strategy ID from the sleeve
+        sleeves_resp = client.get(f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves")
+        strategy_id = sleeves_resp.json()[0]["strategy_id"]
+
+        resp = client.get(f"/api/v1/strategies/{strategy_id}/performance")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["level"] == "strategy"
+        for child in data["children"]:
+            assert child["account_id"] == account_id
+            assert child["client_id"] == client_id
 
     def test_duplicate_name_case_insensitive(self, client):
         """Names are unique case-insensitively: 'growth' clashes with 'Growth'."""

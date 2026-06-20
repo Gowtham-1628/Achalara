@@ -4,6 +4,52 @@
 class TestClientEndpoints:
     """Test client API endpoints"""
 
+    def test_list_clients_empty(self, client):
+        """GET /clients/ returns empty list when no clients exist"""
+        response = client.get("/api/v1/clients/")
+        assert response.status_code == 200
+        assert response.json() == []
+
+    def test_list_clients_populated(self, client):
+        """GET /clients/ returns all created clients"""
+        client.post("/api/v1/clients/", json={"name": "Alpha Fund", "email": "alpha@example.com"})
+        client.post("/api/v1/clients/", json={"name": "Beta Fund", "email": "beta@example.com"})
+
+        response = client.get("/api/v1/clients/")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 2
+        emails = {c["email"] for c in data}
+        assert emails == {"alpha@example.com", "beta@example.com"}
+
+    def test_list_clients_pagination(self, client):
+        """GET /clients/?skip=1&limit=1 paginates correctly"""
+        client.post("/api/v1/clients/", json={"name": "Fund A", "email": "a@example.com"})
+        client.post("/api/v1/clients/", json={"name": "Fund B", "email": "b@example.com"})
+
+        response = client.get("/api/v1/clients/", params={"skip": 1, "limit": 1})
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) == 1
+
+    def test_login_disabled_when_no_password(self, client, monkeypatch):
+        """POST /clients/login returns 503 when CLIENT_DEV_PASSWORD is not set"""
+        from app.config import settings
+        monkeypatch.setattr(settings, "client_dev_password", "")
+        response = client.post(
+            "/api/v1/clients/login", json={"email": "any@example.com", "password": "anything"}
+        )
+        assert response.status_code == 503
+
+    def test_login_wrong_password(self, client, monkeypatch):
+        """POST /clients/login returns 401 with wrong password"""
+        from app.config import settings
+        monkeypatch.setattr(settings, "client_dev_password", "correct-password")
+        response = client.post(
+            "/api/v1/clients/login", json={"email": "any@example.com", "password": "wrong"}
+        )
+        assert response.status_code == 401
+
     def test_create_client(self, client):
         """Test creating a new client"""
         response = client.post(

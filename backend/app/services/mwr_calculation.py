@@ -42,7 +42,10 @@ class MWRCalculationService:
             return irr
 
         except Exception as e:
-            self.logger.error(f"MWR calculation failed: {e}")
+            self.logger.error(
+                "MWR calculation failed for sleeves=%s start=%s end=%s: %s",
+                sleeve_ids, start_date, end_date, e,
+            )
             return 0.0
 
     def _get_opening_value(self, sleeve_ids, start_date: date) -> Decimal:

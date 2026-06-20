@@ -8,6 +8,9 @@ import type {
 const base = '/api/v1/clients'
 
 export const clientsApi = {
+  list: (params?: { skip?: number; limit?: number }) =>
+    apiClient.get<ClientResponse[]>(`${base}/`, { params }).then((r) => r.data),
+
   login: (body: ClientLogin) =>
     apiClient.post<ClientResponse>(`${base}/login`, body).then((r) => r.data),
 

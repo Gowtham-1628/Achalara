@@ -2,7 +2,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from decimal import Decimal
 from datetime import date
 from typing import Optional
 import uuid
@@ -10,11 +9,9 @@ import uuid
 from app.db.database import get_db
 from app.models.account import Account
 from app.models.client import Client
-from app.models.position import Position
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
 from app.services.performance_service import PerformanceService
-from app.services.portfolio_calculation import PortfolioCalculationService
 from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
 
 router = APIRouter()
@@ -25,7 +22,7 @@ class AccountCreate(BaseModel):
 
     name: str
     description: str = ""
-    account_number: str = None
+    account_number: Optional[str] = None
 
 
 class AccountResponse(BaseModel):
@@ -206,70 +203,9 @@ def get_account_positions(
 ):
     """Merged positions across all sleeves in an account."""
     _account_or_404(db, client_id, account_id)
-
     sleeve_ids = [
         s[0] for s in db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
     ]
-
-    perf_svc = PerformanceService(db)
-    calc_service = PortfolioCalculationService(db)
-
-    pos_result = calc_service.calculate_positions(sleeve_ids) if sleeve_ids else {"open": [], "closed": []}
-    positions = pos_result["open"]
-
-    open_positions = (
-        db.query(Position)
-        .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
-        .all()
-    ) if sleeve_ids else []
-    raw_prices = perf_svc.fetch_and_persist_prices(open_positions)
-    prices = {sym: float(p) for sym, p in raw_prices.items()}
-
-    result_positions = []
-    total_cost = Decimal(0)
-    total_market_value = Decimal(0)
-
-    for pos in positions:
-        symbol = pos["symbol"]
-        cost = pos["cost_basis"]
-        qty = pos["quantity"]
-        avg_cost = cost / qty if qty > 0 else Decimal(0)
-
-        if symbol in prices:
-            price = Decimal(str(prices[symbol]))
-            market_value = qty * price
-            unrealized_gain = market_value - cost
-            unrealized_gain_pct = (
-                float(unrealized_gain / cost * 100) if cost > 0 else 0.0
-            )
-        else:
-            price = None
-            market_value = cost
-            unrealized_gain = Decimal(0)
-            unrealized_gain_pct = 0.0
-
-        total_cost += cost
-        total_market_value += market_value
-
-        result_positions.append(
-            {
-                "symbol": symbol,
-                "quantity": float(qty),
-                "cost_basis": float(cost),
-                "avg_cost": float(avg_cost),
-                "current_price": float(price) if price is not None else None,
-                "market_value": float(market_value),
-                "unrealized_gain": float(unrealized_gain),
-                "unrealized_gain_pct": unrealized_gain_pct,
-                "trades_count": pos["trades_count"],
-            }
-        )
-
-    return {
-        "account_id": account_id,
-        "total_cost_basis": float(total_cost),
-        "total_market_value": float(total_market_value),
-        "total_unrealized_gain": float(total_market_value - total_cost),
-        "positions_count": len(result_positions),
-        "positions": result_positions,
-    }
+    svc = PerformanceService(db)
+    payload = svc.positions_payload(sleeve_ids)
+    return {"account_id": account_id, **payload}

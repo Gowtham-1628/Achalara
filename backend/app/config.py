@@ -20,7 +20,15 @@ class Settings(BaseSettings):
     port: int = 8000
     redis_url: str = "redis://localhost:6379/0"
     scheduler_enabled: bool = True
-    client_dev_password: str = "achalara2024"
+    # Comma-separated list of allowed CORS origins. Defaults to localhost dev server.
+    # Set to the actual frontend URL(s) in production.
+    cors_allow_origins: str = "http://localhost:5173"
+    # Dev-only client login password. Empty string disables the endpoint entirely.
+    client_dev_password: str = ""
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_allow_origins.split(",") if o.strip()]
 
     class Config:
         env_file = str(_ENV_FILE)

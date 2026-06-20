@@ -1,0 +1,39 @@
+meta {
+  name: Strategy Performance
+  type: http
+  seq: 2
+}
+
+get {
+  url: {{baseUrl}}/api/v1/strategies/{{strategyId}}/performance
+  body: none
+  auth: none
+}
+
+params:query {
+  ~start_date: 2024-01-01
+  ~end_date: 2024-12-31
+}
+
+assert {
+  res.status: eq 200
+  res.body.level: eq strategy
+  res.body.id: eq {{strategyId}}
+  res.body.children: isDefined
+}
+
+docs {
+  Roll up performance for one strategy across every account that runs it (merged sleeve set,
+  not an average). Returns summary (MWR, TWR, market value) + value timeseries + per-sleeve
+  children.
+
+  Each child in children[] includes:
+    - id: sleeve_id
+    - account_id: the account that sleeve belongs to
+    - client_id: the client that owns that account
+  These allow the frontend to build the full drill-down URL:
+    /app/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}
+
+  Optional query params: start_date, end_date (YYYY-MM-DD). Remove the ~ prefix
+  on the params above to enable date filtering.
+}

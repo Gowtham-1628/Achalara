@@ -1,7 +1,7 @@
-import { loadKnownClients } from '@/lib/constants'
+import { useClientsList } from '@/hooks/useClients'
 
 export function SettingsPage() {
-  const clients = loadKnownClients()
+  const { data: clients = [], isLoading } = useClientsList()
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -11,20 +11,19 @@ export function SettingsPage() {
       </div>
 
       <section className="border border-stone/20 rounded-card p-6">
-        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">Known clients</h2>
-        <p className="text-xs text-stone mb-3">
-          Clients you've created in this browser session. Locally cached until a list-all endpoint is available.
-        </p>
-        {clients.length ? (
+        <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-4">Clients</h2>
+        {isLoading ? (
+          <p className="text-stone text-sm">Loading…</p>
+        ) : clients.length ? (
           <ul className="space-y-2">
             {clients.map((c) => (
               <li key={c.id} className="text-sm font-mono text-stone">
-                <span className="text-summit-ink">{c.name}</span> — {c.id}
+                <span className="text-summit-ink">{c.name}</span> — {c.email}
               </li>
             ))}
           </ul>
         ) : (
-          <p className="text-stone text-sm">No clients cached.</p>
+          <p className="text-stone text-sm">No clients found.</p>
         )}
       </section>
 
@@ -32,7 +31,6 @@ export function SettingsPage() {
         <h2 className="text-sm font-mono uppercase tracking-wide text-stone mb-2">Authentication</h2>
         <p className="text-sm text-stone">
           Single-user mode. Auth configuration will appear here when multi-user login is available.
-          {/* BACKEND_GAP: auth — see BACKEND_GAPS.md */}
         </p>
       </section>
     </div>

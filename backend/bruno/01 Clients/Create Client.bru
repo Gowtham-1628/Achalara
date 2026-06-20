@@ -16,8 +16,8 @@ headers {
 
 body:json {
   {
-    "name": "Sarvani",
-    "email": "vchamidiboyena@gmail.com"
+    "name": "Acme Capital",
+    "email": "{{clientEmail}}"
   }
 }
 
@@ -28,6 +28,7 @@ vars:post-response {
 assert {
   res.status: eq 201
   res.body.name: eq Acme Capital
+  res.body.id: isDefined
 }
 
 script:pre-request {

@@ -14,6 +14,7 @@ import uuid
 from app.db.database import get_db
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
+from app.models.account import Account
 from app.services.performance_service import PerformanceService
 from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
 
@@ -88,19 +89,30 @@ def get_strategy_performance(
     if not strategy:
         raise HTTPException(status_code=404, detail="Strategy not found")
 
-    sleeve_ids = [
-        s[0]
-        for s in db.query(Sleeve.id).filter(Sleeve.strategy_id == strategy_id).all()
-    ]
+    # Fetch sleeves with their account info so we can populate drill-down fields
+    sleeve_rows = (
+        db.query(Sleeve, Account)
+        .join(Account, Sleeve.account_id == Account.id)
+        .filter(Sleeve.strategy_id == strategy_id)
+        .all()
+    )
+    sleeve_ids = [s.id for s, _ in sleeve_rows]
 
     svc = PerformanceService(db)
     perf = svc.performance(sleeve_ids, start_date, end_date)
 
     children = []
-    for sid in sleeve_ids:
-        child = svc.performance([sid], start_date, end_date)
+    for sleeve, account in sleeve_rows:
+        child = svc.performance([sleeve.id], start_date, end_date)
         children.append(
-            {"level": "sleeve", "id": sid, "name": None, "summary": child["summary"]}
+            {
+                "level": "sleeve",
+                "id": sleeve.id,
+                "name": None,
+                "summary": child["summary"],
+                "account_id": account.id,
+                "client_id": account.client_id,
+            }
         )
 
     return {

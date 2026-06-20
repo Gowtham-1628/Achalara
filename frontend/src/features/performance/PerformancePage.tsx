@@ -26,7 +26,7 @@ import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatPercent } from '@/lib/formatters'
 import { useNavigate } from 'react-router-dom'
-import type { LevelPerformance } from '@/api/types'
+import type { LevelPerformance, PerformanceChild } from '@/api/types'
 
 function PerformanceHero({ perf }: { perf: LevelPerformance }) {
   const { summary, level, name } = perf
@@ -184,9 +184,13 @@ export function PerformancePage() {
     return <ErrorState message="Could not load performance data." onRetry={() => refetch()} />
   }
 
-  const makeChildHref = (child: { id: string }) => {
+  const makeChildHref = (child: PerformanceChild) => {
     if (scope.level === 'client') return `/app/clients/${scope.clientId}/accounts/${child.id}`
     if (scope.level === 'account') return `/app/clients/${scope.clientId}/accounts/${scope.accountId}/sleeves/${child.id}`
+    if (scope.level === 'strategy' && child.client_id && child.account_id) {
+      // account_id and client_id are populated on strategy children so we can link directly to the sleeve
+      return `/app/clients/${child.client_id}/accounts/${child.account_id}/sleeves/${child.id}`
+    }
     if (scope.level === 'strategy') return `/app/strategies/${scope.strategyId}`
     return '#'
   }

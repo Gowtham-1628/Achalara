@@ -1,21 +1,19 @@
 """Client endpoints"""
+import secrets
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from decimal import Decimal
 from datetime import date
 from typing import Optional
 
 from app.db.database import get_db
 from app.models.client import Client
 from app.models.account import Account
-from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.api.schemas.client import ClientCreate, ClientResponse, ClientLogin
 from app.config import settings
 from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
 from app.services.performance_service import PerformanceService
-from app.services.portfolio_calculation import PortfolioCalculationService
 
 router = APIRouter()
 
@@ -34,6 +32,22 @@ def create_client(client: ClientCreate, db: Session = Depends(get_db)):
     return db_client
 
 
+@router.get("/", response_model=list[ClientResponse])
+def list_clients(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
+    db: Session = Depends(get_db),
+):
+    """List all clients with pagination, ordered by creation date."""
+    return (
+        db.query(Client)
+        .order_by(Client.created_at)
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+
 @router.get("/lookup", response_model=ClientResponse)
 def lookup_client_by_email(email: str = Query(..., description="Client email address"), db: Session = Depends(get_db)):
     """Look up a client by email address"""
@@ -45,8 +59,14 @@ def lookup_client_by_email(email: str = Query(..., description="Client email add
 
 @router.post("/login", response_model=ClientResponse)
 def login_client(body: ClientLogin, db: Session = Depends(get_db)):
-    """Identify a client by email + dev password. Returns client data on success."""
-    if body.password != settings.client_dev_password:
+    """Identify a client by email + dev password. Returns client data on success.
+
+    Disabled when CLIENT_DEV_PASSWORD is not set in the environment.
+    """
+    if not settings.client_dev_password:
+        raise HTTPException(status_code=503, detail="Dev login is disabled on this server")
+    # Constant-time comparison to prevent timing-oracle attacks
+    if not secrets.compare_digest(body.password, settings.client_dev_password):
         raise HTTPException(status_code=401, detail="Incorrect password")
     client = db.query(Client).filter(Client.email == body.email).first()
     if not client:
@@ -161,70 +181,10 @@ def get_client_positions(client_id: str, db: Session = Depends(get_db)):
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    perf_svc = PerformanceService(db)
-    sleeve_ids = perf_svc.sleeve_ids_for_client(client_id)
-
-    calc_service = PortfolioCalculationService(db)
-
-    pos_result = calc_service.calculate_positions(sleeve_ids) if sleeve_ids else {"open": [], "closed": []}
-    merged = pos_result["open"]
-
-    open_positions = (
-        db.query(Position)
-        .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
-        .all()
-    ) if sleeve_ids else []
-    raw_prices = perf_svc.fetch_and_persist_prices(open_positions)
-    prices = {sym: float(p) for sym, p in raw_prices.items()}
-
-    result_positions = []
-    total_cost = Decimal(0)
-    total_market_value = Decimal(0)
-
-    for pos in merged:
-        symbol = pos["symbol"]
-        cost = pos["cost_basis"]
-        qty = pos["quantity"]
-        avg_cost = cost / qty if qty > 0 else Decimal(0)
-
-        if symbol in prices:
-            price = Decimal(str(prices[symbol]))
-            market_value = qty * price
-            unrealized_gain = market_value - cost
-            unrealized_gain_pct = (
-                float(unrealized_gain / cost * 100) if cost > 0 else 0.0
-            )
-        else:
-            price = None
-            market_value = cost
-            unrealized_gain = Decimal(0)
-            unrealized_gain_pct = 0.0
-
-        total_cost += cost
-        total_market_value += market_value
-
-        result_positions.append(
-            {
-                "symbol": symbol,
-                "quantity": float(qty),
-                "cost_basis": float(cost),
-                "avg_cost": float(avg_cost),
-                "current_price": float(price) if price is not None else None,
-                "market_value": float(market_value),
-                "unrealized_gain": float(unrealized_gain),
-                "unrealized_gain_pct": unrealized_gain_pct,
-                "trades_count": pos["trades_count"],
-            }
-        )
-
-    return {
-        "client_id": client_id,
-        "total_cost_basis": float(total_cost),
-        "total_market_value": float(total_market_value),
-        "total_unrealized_gain": float(total_market_value - total_cost),
-        "positions_count": len(result_positions),
-        "positions": result_positions,
-    }
+    svc = PerformanceService(db)
+    sleeve_ids = svc.sleeve_ids_for_client(client_id)
+    payload = svc.positions_payload(sleeve_ids)
+    return {"client_id": client_id, **payload}
 
 
 @router.get("/{client_id}/trades")

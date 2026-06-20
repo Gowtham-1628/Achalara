@@ -23,6 +23,10 @@ from app.services.twr_calculation import TWRCalculationService
 from app.services.portfolio_calculation import PortfolioCalculationService
 from app.services.webull_market_data import WebullMarketDataService
 
+import logging
+
+_log = logging.getLogger(__name__)
+
 
 class PerformanceService:
     """Builds multi-level performance payloads from sleeve sets."""
@@ -101,8 +105,8 @@ class PerformanceService:
                     for p in open_positions:
                         if p.symbol == symbol:
                             p.current_price = live_decimal
-            except Exception:
-                pass  # keep persisted price
+            except Exception as exc:
+                _log.warning("Webull price fetch failed for %s: %s", symbol, exc)
 
         try:
             self.db.commit()
@@ -151,11 +155,13 @@ class PerformanceService:
 
         try:
             mwr = self.mwr.calculate_mwr(sleeve_ids, s_start, s_end)
-        except Exception:
+        except Exception as exc:
+            _log.error("MWR failed for sleeves=%s: %s", sleeve_ids, exc)
             mwr = None
         try:
             twr = self.twr.calculate_twr(sleeve_ids, s_start, s_end)
-        except Exception:
+        except Exception as exc:
+            _log.error("TWR failed for sleeves=%s: %s", sleeve_ids, exc)
             twr = None
 
         valued = self.portfolio.calculate_account_value(sleeve_ids, prices)
@@ -198,6 +204,78 @@ class PerformanceService:
             "start_date": s_start,
             "end_date": s_end,
             "timeseries": timeseries,
+        }
+
+    def positions_payload(self, sleeve_ids: List[str]) -> Dict:
+        """Fetch live prices, compute open-position values and totals.
+
+        Returns a dict ready to be included in any positions response:
+            positions_count, total_cost_basis, total_market_value,
+            total_unrealized_gain, positions[].
+        Single source of truth — used by client, account, and sleeve routes.
+        """
+        sleeve_ids = list(sleeve_ids)
+
+        pos_result = (
+            self.portfolio.calculate_positions(sleeve_ids)
+            if sleeve_ids
+            else {"open": [], "closed": []}
+        )
+        open_pos = pos_result["open"]
+
+        open_position_rows = (
+            self.db.query(Position)
+            .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
+            .all()
+        ) if sleeve_ids else []
+
+        raw_prices = self.fetch_and_persist_prices(open_position_rows)
+        prices = {sym: float(p) for sym, p in raw_prices.items()}
+
+        result_positions = []
+        total_cost = Decimal(0)
+        total_market_value = Decimal(0)
+
+        for pos in open_pos:
+            symbol = pos["symbol"]
+            cost = pos["cost_basis"]
+            qty = pos["quantity"]
+            avg_cost = cost / qty if qty > 0 else Decimal(0)
+
+            if symbol in prices:
+                price = Decimal(str(prices[symbol]))
+                market_value = qty * price
+                unrealized_gain = market_value - cost
+                unrealized_gain_pct = float(unrealized_gain / cost * 100) if cost > 0 else 0.0
+            else:
+                price = None
+                market_value = cost
+                unrealized_gain = Decimal(0)
+                unrealized_gain_pct = 0.0
+
+            total_cost += cost
+            total_market_value += market_value
+
+            result_positions.append(
+                {
+                    "symbol": symbol,
+                    "quantity": float(qty),
+                    "cost_basis": float(cost),
+                    "avg_cost": float(avg_cost),
+                    "current_price": float(price) if price is not None else None,
+                    "market_value": float(market_value),
+                    "unrealized_gain": float(unrealized_gain),
+                    "unrealized_gain_pct": unrealized_gain_pct,
+                    "trades_count": pos["trades_count"],
+                }
+            )
+
+        return {
+            "total_cost_basis": float(total_cost),
+            "total_market_value": float(total_market_value),
+            "total_unrealized_gain": float(total_market_value - total_cost),
+            "positions_count": len(result_positions),
+            "positions": result_positions,
         }
 
     def monthly_returns(self, sleeve_ids: List[str]) -> List[Dict]:
@@ -244,6 +322,15 @@ class PerformanceService:
         year, month = first_date.year, first_date.month
         end_year, end_month = last_date.year, last_date.month
 
+        # Pre-compute realized gains bucketed by (year, month) — avoids O(N) db
+        # calls (one per calendar month) inside the loop below.
+        all_closed = self.portfolio.calculate_positions(sleeve_ids)["closed"]
+        realized_by_month: Dict[tuple, float] = {}
+        for p in all_closed:
+            if p["closed_at"]:
+                key = (p["closed_at"].year, p["closed_at"].month)
+                realized_by_month[key] = realized_by_month.get(key, 0.0) + float(p["realized_gain"])
+
         prev_end_value = 0.0  # value carried from previous month
 
         while (year, month) <= (end_year, end_month):
@@ -270,15 +357,7 @@ class PerformanceService:
                 for t in month_trades if t.action == "SELL"
             )
 
-            # Realized gain: SELL proceeds minus matched BUY cost for pairs closed this month
-            closed_result = self.portfolio.calculate_positions(
-                sleeve_ids, as_of_date=effective_end
-            )
-            realized_this_month = sum(
-                float(p["realized_gain"])
-                for p in closed_result["closed"]
-                if p["closed_at"] and date(year, month, 1) <= p["closed_at"] <= effective_end
-            )
+            realized_this_month = realized_by_month.get((year, month), 0.0)
 
             # Modified Dietz return
             is_inception = (year == first_date.year and month == first_date.month)

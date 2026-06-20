@@ -42,7 +42,12 @@ export interface PerformanceSummary {
   total_invested: number; total_proceeds: number; total_realized_gain: number
   closed_positions_count: number; trades_count: number
 }
-export interface PerformanceChild { level: string; id: string; name: string | null; summary: PerformanceSummary }
+export interface PerformanceChild {
+  level: string; id: string; name: string | null; summary: PerformanceSummary
+  /** Populated only when level=sleeve and parent is a strategy — use for drill-down links */
+  account_id?: string | null
+  client_id?: string | null
+}
 export interface TimeseriesPoint { date: string; value: number; cost_basis: number }
 export interface LevelPerformance {
   level: string; id: string; name: string

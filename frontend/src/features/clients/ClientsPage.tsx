@@ -1,45 +1,44 @@
-import { useState, type FormEvent } from 'react'
+import { useState, useEffect, type FormEvent } from 'react'
 import { flushSync } from 'react-dom'
 import { Link, useNavigate } from 'react-router-dom'
-import { useLoginClient, useCreateClient } from '@/hooks/useClients'
-import { loadKnownClients, saveKnownClient } from '@/lib/constants'
+import { useLoginClient, useCreateClient, useClientsList } from '@/hooks/useClients'
+import { saveKnownClient } from '@/lib/constants'
 import { useScope } from '@/context/ScopeContext'
 import type { ClientResponse } from '@/api/types'
-
-// CONTRACT: no list-all-clients endpoint — track known clients in localStorage (BACKEND_GAPS.md)
-function useKnownClients() {
-  const [clients, setClients] = useState<ClientResponse[]>(
-    () => loadKnownClients() as ClientResponse[]
-  )
-  const add = (c: ClientResponse) => {
-    saveKnownClient(c)
-    setClients((prev) => [...prev.filter((x) => x.id !== c.id), c])
-  }
-  return { clients, add }
-}
 
 type Mode = 'list' | 'login' | 'create'
 
 export function ClientsPage() {
   const navigate = useNavigate()
   const { setClient } = useScope()
-  const { clients, add } = useKnownClients()
   const loginClient = useLoginClient()
   const createClient = useCreateClient()
 
-  const [mode, setMode] = useState<Mode>(clients.length === 0 ? 'login' : 'list')
+  // Primary source: API list. localStorage is written on login/create so returning users
+  // see their client immediately even before the API responds.
+  const { data: apiClients, isLoading } = useClientsList()
+  const clients: ClientResponse[] = apiClients ?? []
+
+  const [mode, setMode] = useState<Mode>('list')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
   const [createEmail, setCreateEmail] = useState('')
   const [error, setError] = useState('')
 
+  // Switch to login form automatically only while still loading and no API clients known
+  useEffect(() => {
+    if (!isLoading && clients.length === 0 && mode === 'list') {
+      setMode('login')
+    }
+  }, [isLoading, clients.length, mode])
+
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     try {
-      const client = await loginClient.mutateAsync({ email, password })
-      add(client)
+      const c = await loginClient.mutateAsync({ email, password })
+      saveKnownClient(c)
       setEmail('')
       setPassword('')
       setMode('list')
@@ -52,8 +51,8 @@ export function ClientsPage() {
     e.preventDefault()
     setError('')
     try {
-      const client = await createClient.mutateAsync({ name, email: createEmail })
-      add(client)
+      const c = await createClient.mutateAsync({ name, email: createEmail })
+      saveKnownClient(c)
       setName('')
       setCreateEmail('')
       setMode('list')
@@ -62,8 +61,8 @@ export function ClientsPage() {
     }
   }
 
-  const selectClient = (client: ClientResponse) => {
-    flushSync(() => setClient(client.id, client.name))
+  const selectClient = (c: ClientResponse) => {
+    flushSync(() => setClient(c.id, c.name))
     navigate('/app/performance')
   }
 
@@ -219,27 +218,41 @@ export function ClientsPage() {
         </form>
       )}
 
+      {/* Loading state */}
+      {isLoading && mode === 'list' && (
+        <div className="divide-y divide-stone/10 border border-stone/20 rounded-card overflow-hidden animate-pulse">
+          {[1, 2].map((i) => (
+            <div key={i} className="flex items-center justify-between px-6 py-4">
+              <div className="space-y-2">
+                <div className="h-4 w-32 bg-stone/20 rounded" />
+                <div className="h-3 w-48 bg-stone/10 rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Client list */}
-      {clients.length > 0 && mode === 'list' && (
+      {!isLoading && clients.length > 0 && mode === 'list' && (
         <div className="divide-y divide-stone/10 border border-stone/20 rounded-card overflow-hidden">
-          {clients.map((client) => (
+          {clients.map((c) => (
             <div
-              key={client.id}
+              key={c.id}
               className="flex items-center justify-between px-6 py-4 hover:bg-mist/40 transition-colors"
             >
               <div>
-                <p className="font-medium text-summit-ink">{client.name}</p>
-                <p className="text-xs text-stone font-mono">{client.email}</p>
+                <p className="font-medium text-summit-ink">{c.name}</p>
+                <p className="text-xs text-stone font-mono">{c.email}</p>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => selectClient(client)}
+                  onClick={() => selectClient(c)}
                   className="px-3 py-1.5 text-xs border border-pine text-pine rounded-btn hover:bg-pine hover:text-paper transition-colors"
                 >
                   View performance
                 </button>
                 <Link
-                  to={`/app/clients/${client.id}`}
+                  to={`/app/clients/${c.id}`}
                   className="px-3 py-1.5 text-xs border border-stone/30 text-stone rounded-btn hover:border-summit-ink hover:text-summit-ink transition-colors"
                 >
                   Manage
@@ -251,9 +264,9 @@ export function ClientsPage() {
       )}
 
       {/* Empty list with no form shown */}
-      {clients.length === 0 && mode === 'list' && (
+      {!isLoading && clients.length === 0 && mode === 'list' && (
         <p className="text-center py-16 text-stone text-sm">
-          No clients in this session.{' '}
+          No clients found.{' '}
           <button onClick={() => setMode('login')} className="text-pine underline underline-offset-2">
             Sign in
           </button>{' '}

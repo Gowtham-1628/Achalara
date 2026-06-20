@@ -126,8 +126,41 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
+        "503":
+          description: Dev login disabled (CLIENT_DEV_PASSWORD not configured on server)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /api/v1/clients/:
+    get:
+      tags: [clients]
+      summary: List all clients
+      operationId: listClients
+      parameters:
+        - name: skip
+          in: query
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: List of clients
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClientResponse"
     post:
       tags: [clients]
       summary: Create a client
@@ -1638,6 +1671,14 @@ components:
           nullable: true
         summary:
           $ref: "#/components/schemas/PerformanceSummary"
+        account_id:
+          type: string
+          nullable: true
+          description: Populated only when level=sleeve and parent is a strategy, for drill-down.
+        client_id:
+          type: string
+          nullable: true
+          description: Populated only when level=sleeve and parent is a strategy, for drill-down.
 
     LevelPerformance:
       type: object

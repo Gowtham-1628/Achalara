@@ -5,16 +5,11 @@ Each entry includes: what the UI needs, the suggested endpoint + response shape,
 
 ---
 
-## 1. List all clients
+## 1. List all clients ✅ RESOLVED
 
-**UI need:** The Clients page needs to show all clients — not just ones created in this session.
-**Current workaround:** Known client IDs are cached in `localStorage` via `src/lib/constants.ts`.
-**Suggested endpoint:**
-```
-GET /api/v1/clients/
--> [ClientResponse]
-```
-**Blocked screen:** `ClientsPage` — shows only locally cached clients.
+`GET /api/v1/clients/` implemented. `ClientsPage` now uses the API list as the primary source;
+`localStorage` is retained only for writing newly created/logged-in clients so they survive
+a refresh when the API is temporarily unavailable.
 
 ---
 
@@ -40,11 +35,11 @@ GET /api/v1/benchmarks/{ticker}/performance?start_date&end_date
 
 ---
 
-## 4. Strategy-level sleeve listing
+## 4. Strategy-level sleeve listing ✅ RESOLVED
 
-**UI need:** The strategy performance page's `children[]` returns sleeve-level children. Navigating to a child from strategy context requires the `client_id` and `account_id` — which are not in the `PerformanceChild` response.
-**Current workaround:** Strategy performance drill-down links to the strategy page itself rather than individual sleeves.
-**Suggested:** Include `account_id` and `client_id` in `PerformanceChild` when the level is `strategy`.
+`account_id` and `client_id` are now included in `PerformanceChild` when the parent level is `strategy`.
+`PerformancePage.makeChildHref` uses them to build the full sleeve URL
+(`/app/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}`) when they are present.
 
 ---
 

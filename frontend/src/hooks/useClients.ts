@@ -3,6 +3,7 @@ import { clientsApi } from '@/api/endpoints/clients'
 import type { ClientCreate, ClientLogin } from '@/api/types'
 
 export const clientKeys = {
+  list: (skip?: number, limit?: number) => ['clients', 'list', skip, limit] as const,
   detail: (id: string) => ['clients', id] as const,
   performance: (id: string, start?: string, end?: string) =>
     ['clients', id, 'performance', start, end] as const,
@@ -12,6 +13,13 @@ export const clientKeys = {
   positions: (id: string) => ['clients', id, 'positions'] as const,
   trades: (id: string, skip?: number, limit?: number) =>
     ['clients', id, 'trades', skip, limit] as const,
+}
+
+export function useClientsList(skip = 0, limit = 100) {
+  return useQuery({
+    queryKey: clientKeys.list(skip, limit),
+    queryFn: () => clientsApi.list({ skip, limit }),
+  })
 }
 
 export function useClient(clientId: string) {
