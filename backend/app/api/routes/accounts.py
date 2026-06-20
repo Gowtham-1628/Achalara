@@ -10,11 +10,11 @@ import uuid
 from app.db.database import get_db
 from app.models.account import Account
 from app.models.client import Client
+from app.models.position import Position
 from app.models.strategy import Strategy
 from app.models.sleeve import Sleeve
 from app.services.performance_service import PerformanceService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.market_price import MarketPriceService
 from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
 
 router = APIRouter()
@@ -211,12 +211,19 @@ def get_account_positions(
         s[0] for s in db.query(Sleeve.id).filter(Sleeve.account_id == account_id).all()
     ]
 
+    perf_svc = PerformanceService(db)
     calc_service = PortfolioCalculationService(db)
-    market_service = MarketPriceService()
 
     pos_result = calc_service.calculate_positions(sleeve_ids) if sleeve_ids else {"open": [], "closed": []}
     positions = pos_result["open"]
-    prices = market_service.get_prices_for_symbols([p["symbol"] for p in positions])
+
+    open_positions = (
+        db.query(Position)
+        .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
+        .all()
+    ) if sleeve_ids else []
+    raw_prices = perf_svc.fetch_and_persist_prices(open_positions)
+    prices = {sym: float(p) for sym, p in raw_prices.items()}
 
     result_positions = []
     total_cost = Decimal(0)

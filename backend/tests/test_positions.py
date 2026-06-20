@@ -1,6 +1,7 @@
 """Position calculation tests"""
 
 import pytest
+from unittest.mock import patch
 from tests.conftest import create_test_strategy
 
 
@@ -306,9 +307,13 @@ class TestPositionCalculation:
         )
         assert price_resp.status_code == 200
 
-        pos_resp = client.get(
-            f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
-        )
+        with patch(
+            "app.services.webull_market_data.WebullMarketDataService.get_current_price",
+            return_value=180.0,
+        ):
+            pos_resp = client.get(
+                f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
+            )
 
         assert pos_resp.status_code == 200
         data = pos_resp.json()
@@ -344,9 +349,14 @@ class TestPositionCalculation:
             json={"prices": {"AAPL": 120.00, "MSFT": 110.00}},
         )
 
-        pos_resp = client.get(
-            f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
-        )
+        prices_map = {"AAPL": 120.0, "MSFT": 110.0}
+        with patch(
+            "app.services.webull_market_data.WebullMarketDataService.get_current_price",
+            side_effect=lambda sym: prices_map.get(sym),
+        ):
+            pos_resp = client.get(
+                f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
+            )
 
         assert pos_resp.status_code == 200
         summary = pos_resp.json()["summary"]

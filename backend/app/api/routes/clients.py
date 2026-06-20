@@ -8,6 +8,7 @@ from typing import Optional
 from app.db.database import get_db
 from app.models.client import Client
 from app.models.account import Account
+from app.models.position import Position
 from app.models.sleeve import Sleeve
 from app.models.trade import Trade
 from app.api.schemas.client import ClientCreate, ClientResponse, ClientLogin
@@ -15,7 +16,6 @@ from app.config import settings
 from app.api.schemas.performance import LevelPerformance, MonthlyReturnsResponse, MonthlyReturn
 from app.services.performance_service import PerformanceService
 from app.services.portfolio_calculation import PortfolioCalculationService
-from app.services.market_price import MarketPriceService
 
 router = APIRouter()
 
@@ -161,15 +161,21 @@ def get_client_positions(client_id: str, db: Session = Depends(get_db)):
     if not client:
         raise HTTPException(status_code=404, detail="Client not found")
 
-    sleeve_ids = PerformanceService(db).sleeve_ids_for_client(client_id)
+    perf_svc = PerformanceService(db)
+    sleeve_ids = perf_svc.sleeve_ids_for_client(client_id)
 
     calc_service = PortfolioCalculationService(db)
-    market_service = MarketPriceService()
 
     pos_result = calc_service.calculate_positions(sleeve_ids) if sleeve_ids else {"open": [], "closed": []}
     merged = pos_result["open"]
 
-    prices = market_service.get_prices_for_symbols([p["symbol"] for p in merged])
+    open_positions = (
+        db.query(Position)
+        .filter(Position.sleeve_id.in_(sleeve_ids), Position.status == "OPEN")
+        .all()
+    ) if sleeve_ids else []
+    raw_prices = perf_svc.fetch_and_persist_prices(open_positions)
+    prices = {sym: float(p) for sym, p in raw_prices.items()}
 
     result_positions = []
     total_cost = Decimal(0)

@@ -64,22 +64,43 @@ class PerformanceService:
         if not open_positions:
             return {}
 
-        # Seed with persisted prices so closed positions still have values.
+        return self.fetch_and_persist_prices(open_positions)
+
+    def fetch_and_persist_prices(
+        self, open_positions: List[Position]
+    ) -> Dict[str, Decimal]:
+        """Fetch live Webull prices for a list of open Position rows, persist, and return.
+
+        Seed from persisted current_price first so callers always get the last
+        known price even when Webull is unconfigured or a symbol fails.
+        Deduplicates symbols so each ticker is fetched at most once.
+        """
+        if not open_positions:
+            return {}
+
         prices: Dict[str, Decimal] = {}
+        # Seed from last persisted price (fallback for any live-fetch failure).
+        seen_symbols: Dict[str, Position] = {}
         for p in open_positions:
             if p.current_price is not None:
                 prices[p.symbol] = p.current_price
+            # Keep one representative Position row per symbol for persistence.
+            seen_symbols.setdefault(p.symbol, p)
 
         webull = WebullMarketDataService()
         if not webull.app_key or not webull.app_secret:
             return prices
 
-        for pos in open_positions:
+        for symbol, pos in seen_symbols.items():
             try:
-                live = webull.get_current_price(pos.symbol)
+                live = webull.get_current_price(symbol)
                 if live is not None:
-                    prices[pos.symbol] = Decimal(str(live))
-                    pos.current_price = Decimal(str(live))
+                    live_decimal = Decimal(str(live))
+                    prices[symbol] = live_decimal
+                    # Persist to every open Position row for this symbol.
+                    for p in open_positions:
+                        if p.symbol == symbol:
+                            p.current_price = live_decimal
             except Exception:
                 pass  # keep persisted price
 

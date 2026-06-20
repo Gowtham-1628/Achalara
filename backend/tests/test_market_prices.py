@@ -84,10 +84,14 @@ def test_manual_update_market_prices_persists_to_db(client):
     assert resp.status_code == 200
     assert resp.json()["updated"] == 1
 
-    # Positions should now reflect the persisted price
-    pos_resp = client.get(
-        f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
-    )
+    # Positions should now reflect 200.0; mock Webull so live fetch doesn't override it.
+    with patch(
+        "app.services.webull_market_data.WebullMarketDataService.get_current_price",
+        return_value=200.0,
+    ):
+        pos_resp = client.get(
+            f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
+        )
     assert pos_resp.status_code == 200
     positions = pos_resp.json()["positions"]
     aapl = next(p for p in positions if p["symbol"] == "AAPL")
@@ -108,14 +112,13 @@ def test_fetch_market_prices_from_webull_persists_to_db(client):
         resp = client.post(
             f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/fetch-market-prices"
         )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "MSFT" in data["symbols"]
 
-    assert resp.status_code == 200
-    data = resp.json()
-    assert "MSFT" in data["symbols"]
-
-    pos_resp = client.get(
-        f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
-    )
+        pos_resp = client.get(
+            f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
+        )
     positions = pos_resp.json()["positions"]
     msft = next(p for p in positions if p["symbol"] == "MSFT")
     assert msft["current_price"] == pytest.approx(380.0, rel=1e-3)
@@ -138,9 +141,14 @@ def test_positions_fall_back_to_cost_basis_when_no_prices(client):
     )
     _add_trade(client, sleeve_id, symbol="NVDA", price=500.0, quantity=5)
 
-    resp = client.get(
-        f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
-    )
+    # Mock Webull returning None so the endpoint falls back to cost basis.
+    with patch(
+        "app.services.webull_market_data.WebullMarketDataService.get_current_price",
+        return_value=None,
+    ):
+        resp = client.get(
+            f"/api/v1/clients/{client_id}/accounts/{account_id}/sleeves/{sleeve_id}/positions"
+        )
     assert resp.status_code == 200
     positions = resp.json()["positions"]
     nvda = next(p for p in positions if p["symbol"] == "NVDA")

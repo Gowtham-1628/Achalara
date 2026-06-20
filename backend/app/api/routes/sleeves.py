@@ -252,16 +252,15 @@ def get_sleeve_positions(
     _get_sleeve_or_404(db, client_id, account_id, sleeve_id)
 
     calc_service = PortfolioCalculationService(db)
+    perf_svc = PerformanceService(db)
 
-    # Prefer persisted current_price from OPEN position rows
-    persisted = (
+    open_positions = (
         db.query(PositionModel)
         .filter(PositionModel.sleeve_id == sleeve_id, PositionModel.status == "OPEN")
         .all()
     )
-    prices = {
-        p.symbol: p.current_price for p in persisted if p.current_price is not None
-    }
+    raw_prices = perf_svc.fetch_and_persist_prices(open_positions)
+    prices = {sym: p for sym, p in raw_prices.items()}
 
     portfolio = calc_service.calculate_account_value(sleeve_id, prices)
 
