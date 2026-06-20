@@ -51,16 +51,36 @@ All app routes nest under `<AppShell>` at `/app/*`. Route params:
 
 Fast-follower routes (`/app/portfolio`, `/app/risk`, `/app/grow`) exist but render `<ComingSoon>`.
 
+### Data layer conventions
+
+- **Field names must match the backend exactly.** Key ones: `mwr_pct`, `twr_pct`, `total_market_value`, `total_unrealized_gain` (on `PerformanceSummary`); `matched_quantity`, `entry_price`, `exit_price`, `opened_at`, `closed_at` (on `ClosedPosition`); `months` not `monthly_returns` (on `MonthlyReturnsResponse`).
+- **Percentage units**: `mwr_pct`/`twr_pct`/`twr_cumul`/`mwr_cumul` are decimal fractions (0.05 = 5%); `unrealized_gain_pct`/`realized_gain_pct`/`return_pct` are whole-number percentages (7.34 = 7.34%). Pass decimals to `formatPercent`, whole numbers to display with `%` directly.
+- **All IDs are UUIDs** (string, 36 chars) — never assume numeric.
+- **Timestamps are ISO-8601 strings** in API responses.
+
+### Navigation to PerformancePage
+
+When navigating to `/app/performance` from a detail page, always wrap both the scope setter and `navigate()` in `flushSync()` to avoid React batching the state update after the page mounts:
+
+```tsx
+import { flushSync } from 'react-dom'
+flushSync(() => setClient(id, name))
+navigate('/app/performance')
+```
+
+This pattern is in `ClientsPage`, `ClientDetailPage`, `AccountDetailPage`, and `SleeveDetailPage`. Do not remove it — without it the performance page mounts before scope is set and renders blank.
+
 ### Shared components (`src/components/`)
 
 | Component | Purpose |
 |---|---|
 | `AppShell` | Left sidebar + scope switcher + date picker; wraps all app routes |
 | `StatCard` | Single metric display (label + value + optional delta) |
-| `PerformanceChart` | Recharts line chart for `timeseries: [{date, value}]` |
-| `MonthlyReturnsHeatmap` | Year × month grid from `/performance/monthly`; gain/clay ramp |
-| `LevelBreakdown` | Sortable ranked table of `children[]` with links to drill-down |
-| `DataTable` | Generic sortable table; sticky header; right-aligned mono numbers |
+| `PerformanceChart` | Portfolio value over time — single line, `{date, value, cost_basis}` points |
+| `ReturnsSeriesChart` | Dual-line TWR vs MWR chart — `{date, twr_cumul, mwr_cumul}` weekly points; pine solid = TWR, gold dashed = MWR |
+| `MonthlyReturnsHeatmap` | Year × month grid from `/performance/monthly`; gain/clay ramp; `return_pct` is whole-number % |
+| `LevelBreakdown` | 5-column grid of `children[]` (name, MWR, TWR, unrealised gain) with drill-down links |
+| `DataTable` | Generic sortable table; columns declare `sortValue?: (row) => string\|number` for client-side sort |
 | `EmptyState` / `ErrorState` | Consistent empty and error treatments; every screen uses these |
 | `Skeleton` | Loading placeholders; every data-fetching screen shows skeletons |
 | `ComingSoon` | Placeholder for fast-follower modules (Portfolio, Risk, Grow) |
@@ -68,14 +88,28 @@ Fast-follower routes (`/app/portfolio`, `/app/risk`, `/app/grow`) exist but rend
 ### Features (`src/features/`)
 
 Each feature directory contains its page component(s). Implemented:
-- `performance/PerformancePage` — hero MWR/TWR, timeseries, heatmap, level breakdown
+- `performance/PerformancePage` — hero MWR/TWR cards, portfolio value chart, TWR vs MWR returns-series chart, monthly heatmap, level breakdown; 1M/3M/6M/1Y/3Y/MAX quick-filter presets
 - `clients/ClientsPage`, `clients/ClientDetailPage`
 - `accounts/AccountDetailPage`
-- `sleeves/SleeveDetailPage`
+- `sleeves/SleeveDetailPage` — open positions, closed/realised tab, trades
 - `strategies/StrategiesPage`
 - `imports/ImportsPage` — two-phase VALIDATE→IMPORT flow, sync logs, sheet sync configs
 
 Stubs (render `<ComingSoon>`): `PortfolioPage`, `RiskPage`, `GrowPage`, `SettingsPage`.
+
+### Performance chart date filtering
+
+The backend always returns full-history `timeseries` regardless of `start_date`/`end_date` params. Filter on the client side before passing to `PerformanceChart` and `ReturnsSeriesChart`:
+
+```tsx
+data={perf.timeseries.filter(pt => {
+  if (startDate && pt.date < startDate) return false
+  if (endDate && pt.date > endDate) return false
+  return true
+})}
+```
+
+The quick-filter presets (`applyPreset`) set `DateRangeContext`; the chart section then re-filters from the already-fetched full series.
 
 ### Formatters (`src/lib/formatters.ts`)
 
