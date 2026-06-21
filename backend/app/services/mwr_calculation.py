@@ -44,7 +44,10 @@ class MWRCalculationService:
         except Exception as e:
             self.logger.error(
                 "MWR calculation failed for sleeves=%s start=%s end=%s: %s",
-                sleeve_ids, start_date, end_date, e,
+                sleeve_ids,
+                start_date,
+                end_date,
+                e,
             )
             return 0.0
 
@@ -120,6 +123,9 @@ class MWRCalculationService:
         )
 
         net_qty: dict = {}
+        # Track the latest-dated trade price per symbol in the same pass so we
+        # don't re-query the DB once per open symbol (previously an N+1).
+        last_price: dict = {}
         for trade in trades:
             symbol = trade.symbol
             qty = Decimal(str(trade.quantity))
@@ -129,21 +135,14 @@ class MWRCalculationService:
             else:
                 net_qty[symbol] -= qty
 
+            prev = last_price.get(symbol)
+            if prev is None or trade.trade_date >= prev[0]:
+                last_price[symbol] = (trade.trade_date, Decimal(str(trade.price)))
+
         value = Decimal(0)
         for symbol, qty in net_qty.items():
-            if qty > 0:
-                last_trade = (
-                    self.db.query(Trade)
-                    .filter(
-                        Trade.sleeve_id.in_(sleeve_ids),
-                        Trade.symbol == symbol,
-                        Trade.trade_date <= end_date,
-                    )
-                    .order_by(Trade.trade_date.desc())
-                    .first()
-                )
-                if last_trade:
-                    value += qty * Decimal(str(last_trade.price))
+            if qty > 0 and symbol in last_price:
+                value += qty * last_price[symbol][1]
 
         return value
 

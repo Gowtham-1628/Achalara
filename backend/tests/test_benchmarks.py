@@ -3,10 +3,10 @@ from unittest.mock import patch
 
 
 class TestBenchmarkEndpoints:
-
     def test_benchmark_no_webull_keys(self, client, monkeypatch):
         """Returns 200 with empty timeseries and a warning when Webull keys are absent"""
         from app.config import settings
+
         monkeypatch.setattr(settings, "webull_app_key", "")
         monkeypatch.setattr(settings, "webull_app_secret", "")
 
@@ -16,7 +16,10 @@ class TestBenchmarkEndpoints:
         assert data["ticker"] == "SPY"
         assert data["timeseries"] == []
         assert data["warning"] is not None
-        assert "credentials" in data["warning"].lower() or "webull" in data["warning"].lower()
+        assert (
+            "credentials" in data["warning"].lower()
+            or "webull" in data["warning"].lower()
+        )
 
     def test_benchmark_invalid_ticker(self, client):
         """Returns 422 for tickers with invalid characters"""
@@ -28,9 +31,29 @@ class TestBenchmarkEndpoints:
         response = client.get("/api/v1/benchmarks/SPY%3BHACK/performance")
         assert response.status_code in (404, 422)
 
+    def test_benchmark_ticker_all_punctuation_rejected(self, client):
+        """Tickers that are only punctuation (e.g. '...', '---') are rejected"""
+        for bad in ("...", "---", ".-^"):
+            response = client.get(f"/api/v1/benchmarks/{bad}/performance")
+            assert response.status_code in (404, 422), bad
+
+    def test_benchmark_start_after_end_rejected(self, client, monkeypatch):
+        """start_date later than end_date returns 422"""
+        from app.config import settings
+
+        monkeypatch.setattr(settings, "webull_app_key", "test-key")
+        monkeypatch.setattr(settings, "webull_app_secret", "test-secret")
+
+        response = client.get(
+            "/api/v1/benchmarks/SPY/performance",
+            params={"start_date": "2024-12-31", "end_date": "2024-01-01"},
+        )
+        assert response.status_code == 422
+
     def test_benchmark_date_filter(self, client, monkeypatch):
         """Only returns bars within the requested date range"""
         from app.config import settings
+
         monkeypatch.setattr(settings, "webull_app_key", "test-key")
         monkeypatch.setattr(settings, "webull_app_secret", "test-secret")
 
@@ -62,6 +85,7 @@ class TestBenchmarkEndpoints:
     def test_benchmark_returns_sorted_ascending(self, client, monkeypatch):
         """Timeseries is returned in ascending date order regardless of API order"""
         from app.config import settings
+
         monkeypatch.setattr(settings, "webull_app_key", "test-key")
         monkeypatch.setattr(settings, "webull_app_secret", "test-secret")
 
@@ -85,6 +109,7 @@ class TestBenchmarkEndpoints:
     def test_benchmark_webull_failure_returns_warning(self, client, monkeypatch):
         """When Webull raises an exception the endpoint returns warning, not 500"""
         from app.config import settings
+
         monkeypatch.setattr(settings, "webull_app_key", "test-key")
         monkeypatch.setattr(settings, "webull_app_secret", "test-secret")
 

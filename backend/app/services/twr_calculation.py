@@ -69,6 +69,21 @@ class TWRCalculationService:
             ):
                 persisted[row.symbol] = Decimal(str(row.current_price))
 
+            # Pre-compute the latest-dated trade price per symbol in a single query
+            # so the open-position loop never re-queries the DB (previously N+1).
+            last_trade_price: dict = {}
+            for trade in (
+                self.db.query(Trade)
+                .filter(Trade.sleeve_id.in_(sleeve_ids), Trade.trade_date <= end_date)
+                .all()
+            ):
+                prev = last_trade_price.get(trade.symbol)
+                if prev is None or trade.trade_date >= prev[0]:
+                    last_trade_price[trade.symbol] = (
+                        trade.trade_date,
+                        Decimal(str(trade.price)),
+                    )
+
             period_returns: List[float] = []
 
             for pos in result["open"]:
@@ -81,20 +96,10 @@ class TWRCalculationService:
 
                 if symbol in persisted:
                     market_price = persisted[symbol]
+                elif symbol in last_trade_price:
+                    market_price = last_trade_price[symbol][1]
                 else:
-                    last_trade = (
-                        self.db.query(Trade)
-                        .filter(
-                            Trade.sleeve_id.in_(sleeve_ids),
-                            Trade.symbol == symbol,
-                            Trade.trade_date <= end_date,
-                        )
-                        .order_by(Trade.trade_date.desc())
-                        .first()
-                    )
-                    if last_trade is None:
-                        continue
-                    market_price = Decimal(str(last_trade.price))
+                    continue
 
                 hpr = float((market_price - avg_cost) / avg_cost)
                 period_returns.append(1.0 + hpr)

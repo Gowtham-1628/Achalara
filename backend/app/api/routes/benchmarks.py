@@ -12,7 +12,7 @@ from app.services.webull_market_data import WebullMarketDataService
 router = APIRouter()
 _log = logging.getLogger(__name__)
 
-_TICKER_RE = re.compile(r"^[A-Z0-9\.\-\^]{1,10}$")
+_TICKER_RE = re.compile(r"^[A-Z0-9][A-Z0-9.\-^]{0,9}$")
 
 
 @router.get("/{ticker}/performance", response_model=BenchmarkResponse)
@@ -24,6 +24,11 @@ def get_benchmark_performance(
     ticker = ticker.upper().strip()
     if not _TICKER_RE.match(ticker):
         raise HTTPException(status_code=422, detail="Invalid ticker symbol")
+
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(
+            status_code=422, detail="start_date must be on or before end_date"
+        )
 
     try:
         svc = WebullMarketDataService()

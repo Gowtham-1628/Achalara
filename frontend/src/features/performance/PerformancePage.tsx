@@ -31,7 +31,12 @@ import { ErrorState } from '@/components/ErrorState'
 import { SkeletonCard } from '@/components/Skeleton'
 import { formatCurrency, formatPercent } from '@/lib/formatters'
 import { useNavigate } from 'react-router-dom'
-import type { LevelPerformance, PerformanceChild } from '@/api/types'
+import type { LevelPerformance, PerformanceChild, WeeklyReturnPoint } from '@/api/types'
+
+/** Intermediate shape used while interpolating the benchmark close onto each series point. */
+interface PointWithClose extends WeeklyReturnPoint {
+  _bmk_close: number | null
+}
 
 function PerformanceHero({ perf }: { perf: LevelPerformance }) {
   const { summary, level, name } = perf
@@ -179,14 +184,14 @@ export function PerformancePage() {
     if (!visible.length) return []
 
     // Nearest-prior benchmark close for each visible point
-    const withClose = visible.map((pt) => {
-      if (!bmk?.length) return { ...pt, _bmk_close: null as number | null }
+    const withClose: PointWithClose[] = visible.map((pt) => {
+      if (!bmk?.length) return { ...pt, _bmk_close: null }
       let lo = 0; let hi = bmk.length - 1; let match = null
       while (lo <= hi) {
         const mid = (lo + hi) >> 1
         if (bmk[mid].date <= pt.date) { match = bmk[mid]; lo = mid + 1 } else { hi = mid - 1 }
       }
-      return { ...pt, _bmk_close: match ? match.close : null as number | null }
+      return { ...pt, _bmk_close: match?.close ?? null }
     })
 
     // Rebase to 0% at first visible point
@@ -203,6 +208,24 @@ export function PerformancePage() {
         : null,
     }))
   }, [returnsSeries, benchmarkData, startDate, endDate])
+
+  const filteredTimeseries = useMemo(
+    () => (perf?.timeseries ?? []).filter((pt) => {
+      if (startDate && pt.date < startDate) return false
+      if (endDate && pt.date > endDate) return false
+      return true
+    }),
+    [perf, startDate, endDate],
+  )
+
+  const filteredBenchmark = useMemo(
+    () => benchmarkData?.timeseries.filter((pt) => {
+      if (startDate && pt.date < startDate) return false
+      if (endDate && pt.date > endDate) return false
+      return true
+    }),
+    [benchmarkData, startDate, endDate],
+  )
 
   const applyPreset = (months: number | null) => {
     if (months === null) {
@@ -247,18 +270,6 @@ export function PerformancePage() {
   if (isError || !perf) {
     return <ErrorState message="Could not load performance data." onRetry={() => refetch()} />
   }
-
-  const filteredTimeseries = perf.timeseries.filter((pt) => {
-    if (startDate && pt.date < startDate) return false
-    if (endDate && pt.date > endDate) return false
-    return true
-  })
-
-  const filteredBenchmark = benchmarkData?.timeseries.filter((pt) => {
-    if (startDate && pt.date < startDate) return false
-    if (endDate && pt.date > endDate) return false
-    return true
-  })
 
   const makeChildHref = (child: PerformanceChild) => {
     if (scope.level === 'client') return `/app/clients/${scope.clientId}/accounts/${child.id}`

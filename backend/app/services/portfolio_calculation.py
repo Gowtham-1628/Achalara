@@ -56,7 +56,11 @@ class PortfolioCalculationService:
             .all()
         )
 
-        # Per (symbol, quantity): queues of unmatched buys and sells, in date order.
+        # Per (symbol, quantity): queues of unmatched buys, in date order.
+        # NOTE: matching is by EXACT quantity — a BUY of 100 only pairs with a
+        # SELL of 100. Partial fills (100 BUY vs 60 + 40 SELLs) are NOT netted;
+        # they remain unmatched. This is intentional: trades are imported as
+        # discrete round-trips, not aggregated lots.
         open_buys: Dict[tuple, List[Trade]] = {}
         closed_positions: List[Dict] = []
         trades_count: Dict[str, int] = {}

@@ -204,13 +204,15 @@ export function SleeveDetailPage() {
                   { label: 'Quantity', field: 'quantity', type: 'number', placeholder: '100' },
                   { label: 'Price', field: 'price', type: 'number', placeholder: '185.50' },
                   { label: 'Commission', field: 'commission', type: 'number', placeholder: '0' },
-                ].map(({ label, field, type = 'text', placeholder }) => (
+                ].map(({ label, field, type = 'text', placeholder }) => {
+                  const key = field as keyof typeof trade
+                  return (
                   <div key={field}>
                     <label className="text-xs text-stone block mb-1">{label}</label>
                     <input
                       required={field !== 'commission'}
                       type={type}
-                      value={(trade as Record<string, string>)[field]}
+                      value={String(trade[key] ?? '')}
                       onChange={(e) => setTrade({ ...trade, [field]: e.target.value })}
                       placeholder={placeholder}
                       step={type === 'number' ? 'any' : undefined}
@@ -218,7 +220,8 @@ export function SleeveDetailPage() {
                       className="w-full border border-stone/30 rounded-btn px-2 py-1.5 text-sm focus:outline-none focus:border-pine"
                     />
                   </div>
-                ))}
+                  )
+                })}
                 <div>
                   <label className="text-xs text-stone block mb-1">Action</label>
                   <select
