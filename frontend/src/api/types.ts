@@ -152,9 +152,17 @@ export interface WeeklyReturnPoint {
   date: string          // ISO date (Monday)
   twr_cumul: number | null
   mwr_cumul: number | null
+  benchmark_cumul?: number | null
 }
 export interface ReturnsSeriesResponse {
   level: 'client' | 'account' | 'sleeve' | 'strategy'
   id: string
   series: WeeklyReturnPoint[]
+}
+
+export interface BenchmarkPoint { date: string; close: number }
+export interface BenchmarkResponse {
+  ticker: string
+  timeseries: BenchmarkPoint[]
+  warning: string | null
 }

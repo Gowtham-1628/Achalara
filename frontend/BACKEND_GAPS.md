@@ -13,16 +13,13 @@ a refresh when the API is temporarily unavailable.
 
 ---
 
-## 2. Benchmark comparison
+## 2. Benchmark comparison ✅ RESOLVED
 
-**UI need:** The Performance hero would benefit from a benchmark line (e.g. S&P 500) to contextualise MWR/TWR.
-**Current workaround:** The hero shows MWR vs TWR and current value vs invested cost as the comparison — this is honest and available.
-**Suggested endpoint:**
-```
-GET /api/v1/benchmarks/{ticker}/performance?start_date&end_date
--> { ticker, timeseries: [{ date, value }] }
-```
-**Blocked screen:** `PerformancePage` — `// BACKEND_GAP: benchmark` seam is in place.
+`GET /api/v1/benchmarks/{ticker}/performance` implemented. Returns `{ ticker, timeseries: [{date, close}], warning }`.
+- Portfolio Value chart shows a normalized benchmark line (gold dashed) overlaid on portfolio value.
+- TWR vs MWR returns chart shows a third line for benchmark cumulative return (clay dashed).
+- Ticker selector on PerformancePage: SPY/QQQ/AGG/DIA quick buttons + free-text input (debounced 500ms).
+- Graceful: if Webull keys absent, returns `timeseries: []` with `warning` — charts render without benchmark line.
 
 ---
 

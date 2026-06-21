@@ -1,0 +1,35 @@
+meta {
+  name: Benchmark Performance
+  type: http
+  seq: 1
+}
+
+get {
+  url: {{baseUrl}}/api/v1/benchmarks/SPY/performance
+  body: none
+  auth: none
+}
+
+params:query {
+  ~start_date: 2024-01-01
+  ~end_date: 2024-12-31
+}
+
+assert {
+  res.status: eq 200
+  res.body.ticker: eq SPY
+  res.body.timeseries: isDefined
+}
+
+docs {
+  Fetch historical weekly bars for a benchmark ticker (e.g. SPY, QQQ, AGG).
+  Returns { ticker, timeseries: [{date, close}], warning }.
+
+  - timeseries is empty (with a non-null warning) when Webull credentials are absent
+    or the ticker is not found — the endpoint always returns 200, never 500.
+  - Dates in timeseries are ascending (oldest first).
+  - Optional query params: start_date, end_date (YYYY-MM-DD). Remove the ~ prefix to enable.
+
+  Frontend uses this to overlay a normalized benchmark line on the Portfolio Value chart
+  and a cumulative-return line on the TWR vs MWR chart.
+}

@@ -135,7 +135,7 @@ Copy `.env.example` to `.env`. Required var: `VITE_API_BASE_URL=http://localhost
 
 ## Fast-Follower Modules (do not wire to endpoints)
 
-Portfolio, Risk, Grow, benchmark comparison, and auth have no backend yet. Render `<ComingSoon>` and record gaps in `BACKEND_GAPS.md`. The API also lacks a list-all-clients endpoint — known clients are tracked locally until one lands.
+Portfolio, Risk, Grow, and auth have no backend yet. Render `<ComingSoon>` and record gaps in `BACKEND_GAPS.md`. Benchmark comparison (`GET /api/v1/benchmarks/{ticker}/performance`) and list-all-clients (`GET /api/v1/clients/`) are now implemented.
 
 ## What "Done" Looks Like
 

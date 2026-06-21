@@ -5,6 +5,7 @@ import type { WeeklyReturnPoint } from '@/api/types'
 
 interface Props {
   data: WeeklyReturnPoint[]
+  benchmarkTicker?: string
 }
 
 const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -39,7 +40,7 @@ function pickTicks(data: WeeklyReturnPoint[]): string[] {
   return ticks
 }
 
-export function ReturnsSeriesChart({ data }: Props) {
+export function ReturnsSeriesChart({ data, benchmarkTicker }: Props) {
   if (!data.length) {
     return (
       <div className="flex items-center justify-center h-48 text-stone text-sm">
@@ -49,6 +50,19 @@ export function ReturnsSeriesChart({ data }: Props) {
   }
 
   const ticks = pickTicks(data)
+  const hasBenchmark = benchmarkTicker && data.some((pt) => pt.benchmark_cumul != null)
+
+  const legendFormatter = (value: string) => {
+    if (value === 'twr_cumul') return 'TWR'
+    if (value === 'mwr_cumul') return 'MWR'
+    if (value === 'benchmark_cumul') return benchmarkTicker ?? 'Benchmark'
+    return value
+  }
+
+  const tooltipFormatter = (v: number, name: string) => [
+    fmtPct(v),
+    legendFormatter(name),
+  ]
 
   return (
     <div>
@@ -72,10 +86,7 @@ export function ReturnsSeriesChart({ data }: Props) {
             width={72}
           />
           <Tooltip
-            formatter={(v: number, name: string) => [
-              fmtPct(v),
-              name === 'twr_cumul' ? 'TWR' : 'MWR',
-            ]}
+            formatter={tooltipFormatter}
             labelFormatter={fmtAxisDate}
             contentStyle={{
               fontFamily: 'IBM Plex Mono',
@@ -85,7 +96,7 @@ export function ReturnsSeriesChart({ data }: Props) {
             }}
           />
           <Legend
-            formatter={(value) => (value === 'twr_cumul' ? 'TWR' : 'MWR')}
+            formatter={legendFormatter}
             wrapperStyle={{ fontFamily: 'IBM Plex Mono', fontSize: 11, paddingTop: 8 }}
           />
           <Line
@@ -107,6 +118,18 @@ export function ReturnsSeriesChart({ data }: Props) {
             activeDot={{ r: 4, fill: '#2F5D4A' }}
             connectNulls
           />
+          {hasBenchmark && (
+            <Line
+              type="monotone"
+              dataKey="benchmark_cumul"
+              stroke="#C2703D"
+              strokeWidth={1.5}
+              strokeDasharray="3 3"
+              dot={false}
+              activeDot={{ r: 4, fill: '#8A968F' }}
+              connectNulls
+            />
+          )}
         </LineChart>
       </ResponsiveContainer>
     </div>

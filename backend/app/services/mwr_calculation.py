@@ -193,9 +193,13 @@ class MWRCalculationService:
 
         # Convert annualized IRR → holding-period return for the actual window
         # so MWR and TWR are on the same scale (both = return over the period).
+        # If start and end are the same date (e.g. inception week with same-day
+        # cash flows) there is no elapsed time and the return must be 0 — the
+        # solver's initial guess of 0.1 would otherwise leak through unchanged.
         total_days = (end_date - anchor).days
-        if total_days > 0:
-            holding_period_years = total_days / days_per_year
-            rate = (1 + rate) ** holding_period_years - 1
+        if total_days <= 0:
+            return 0.0
+        holding_period_years = total_days / days_per_year
+        rate = (1 + rate) ** holding_period_years - 1
 
         return rate

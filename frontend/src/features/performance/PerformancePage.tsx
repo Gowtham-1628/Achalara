@@ -1,3 +1,4 @@
+import { useMemo, useState, useCallback, useRef } from 'react'
 import { useScope } from '@/context/ScopeContext'
 import { useDateRange } from '@/context/DateRangeContext'
 
@@ -10,13 +11,17 @@ const PRESETS = [
   { label: 'MAX', months: null },
 ] as const
 
+const QUICK_TICKERS = ['SPY', 'QQQ', 'AGG', 'DIA']
+
 function toISODate(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
+
 import { useClientPerformance, useClientMonthlyPerformance, useClientReturnsSeries } from '@/hooks/useClients'
 import { useAccountPerformance, useAccountMonthlyPerformance, useAccountReturnsSeries } from '@/hooks/useAccounts'
 import { useSleevePerformance, useSleeveMonthlyPerformance, useSleeveReturnsSeries } from '@/hooks/useSleeves'
 import { useStrategyPerformance, useStrategyMonthlyPerformance, useStrategyReturnsSeries } from '@/hooks/useStrategies'
+import { useBenchmark } from '@/hooks/useBenchmark'
 import { PerformanceChart } from '@/components/PerformanceChart'
 import { ReturnsSeriesChart } from '@/components/ReturnsSeriesChart'
 import { MonthlyReturnsHeatmap } from '@/components/MonthlyReturnsHeatmap'
@@ -140,6 +145,65 @@ export function PerformancePage() {
   const { data: monthly } = useActiveMonthly()
   const { data: returnsSeries } = useActiveReturnsSeries()
 
+  // Benchmark state — local to this page
+  const [benchmarkTicker, setBenchmarkTicker] = useState('SPY')
+  const [inputValue, setInputValue] = useState('SPY')
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Fetch full benchmark history (no date filter) — client-side filtering happens in
+  // filteredSeries below, same pattern as perf.timeseries.
+  const { data: benchmarkData } = useBenchmark(benchmarkTicker)
+
+  const handleTickerInput = useCallback((raw: string) => {
+    const val = raw.toUpperCase().replace(/[^A-Z0-9.\-^]/g, '')
+    setInputValue(val)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => {
+      if (val.length >= 1 && val.length <= 10) setBenchmarkTicker(val)
+    }, 500)
+  }, [])
+
+  // Build the returns series for the chart: filter to visible window, attach benchmark
+  // via nearest-prior lookup, then rebase all three lines to 0% at the first visible point.
+  const filteredSeries = useMemo(() => {
+    const series = returnsSeries?.series
+    const bmk = benchmarkData?.timeseries
+
+    if (!series || !series.length) return []
+
+    const visible = series.filter((pt) => {
+      if (startDate && pt.date < startDate) return false
+      if (endDate && pt.date > endDate) return false
+      return true
+    })
+    if (!visible.length) return []
+
+    // Nearest-prior benchmark close for each visible point
+    const withClose = visible.map((pt) => {
+      if (!bmk?.length) return { ...pt, _bmk_close: null as number | null }
+      let lo = 0; let hi = bmk.length - 1; let match = null
+      while (lo <= hi) {
+        const mid = (lo + hi) >> 1
+        if (bmk[mid].date <= pt.date) { match = bmk[mid]; lo = mid + 1 } else { hi = mid - 1 }
+      }
+      return { ...pt, _bmk_close: match ? match.close : null as number | null }
+    })
+
+    // Rebase to 0% at first visible point
+    const baseTwr = withClose[0].twr_cumul ?? 0
+    const baseMwr = withClose[0].mwr_cumul ?? 0
+    const baseBmkClose = withClose[0]._bmk_close
+
+    return withClose.map((pt) => ({
+      date: pt.date,
+      twr_cumul: pt.twr_cumul != null ? pt.twr_cumul - baseTwr : null,
+      mwr_cumul: pt.mwr_cumul != null ? pt.mwr_cumul - baseMwr : null,
+      benchmark_cumul: pt._bmk_close != null && baseBmkClose != null
+        ? (pt._bmk_close / baseBmkClose) - 1
+        : null,
+    }))
+  }, [returnsSeries, benchmarkData, startDate, endDate])
+
   const applyPreset = (months: number | null) => {
     if (months === null) {
       setDateRange(undefined, undefined)
@@ -184,11 +248,22 @@ export function PerformancePage() {
     return <ErrorState message="Could not load performance data." onRetry={() => refetch()} />
   }
 
+  const filteredTimeseries = perf.timeseries.filter((pt) => {
+    if (startDate && pt.date < startDate) return false
+    if (endDate && pt.date > endDate) return false
+    return true
+  })
+
+  const filteredBenchmark = benchmarkData?.timeseries.filter((pt) => {
+    if (startDate && pt.date < startDate) return false
+    if (endDate && pt.date > endDate) return false
+    return true
+  })
+
   const makeChildHref = (child: PerformanceChild) => {
     if (scope.level === 'client') return `/app/clients/${scope.clientId}/accounts/${child.id}`
     if (scope.level === 'account') return `/app/clients/${scope.clientId}/accounts/${scope.accountId}/sleeves/${child.id}`
     if (scope.level === 'strategy' && child.client_id && child.account_id) {
-      // account_id and client_id are populated on strategy children so we can link directly to the sleeve
       return `/app/clients/${child.client_id}/accounts/${child.account_id}/sleeves/${child.id}`
     }
     if (scope.level === 'strategy') return `/app/strategies/${scope.strategyId}`
@@ -201,31 +276,70 @@ export function PerformancePage() {
 
       {/* Timeseries chart */}
       <section className="bg-paper border border-stone/20 rounded-card p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="text-sm font-mono uppercase tracking-wide text-stone">
             Portfolio value over time
           </h2>
-          <div className="flex gap-1">
-            {PRESETS.map((p) => (
-              <button
-                key={p.label}
-                onClick={() => applyPreset(p.months)}
-                className={`px-2.5 py-1 text-xs font-mono rounded transition-colors ${
-                  activePreset === p.label
-                    ? 'bg-pine text-paper'
-                    : 'text-stone hover:text-summit-ink hover:bg-mist'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Benchmark ticker selector */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-mono text-stone">vs</span>
+              <div className="flex gap-1">
+                {QUICK_TICKERS.map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => { setInputValue(t); setBenchmarkTicker(t) }}
+                    className={`px-2 py-0.5 text-xs font-mono rounded transition-colors ${
+                      benchmarkTicker === t
+                        ? 'bg-gold/20 text-gold border border-gold/40'
+                        : 'text-stone hover:text-summit-ink hover:bg-mist'
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={(e) => handleTickerInput(e.target.value)}
+                  placeholder="ticker"
+                  maxLength={10}
+                  className={`w-16 px-2 py-0.5 text-xs font-mono rounded border transition-colors bg-paper outline-none ${
+                    !QUICK_TICKERS.includes(benchmarkTicker) && benchmarkTicker === inputValue
+                      ? 'border-gold/60 text-gold'
+                      : 'border-stone/30 text-stone focus:border-stone/60'
+                  }`}
+                />
+              </div>
+            </div>
+            {/* Date presets */}
+            <div className="flex gap-1">
+              {PRESETS.map((p) => (
+                <button
+                  key={p.label}
+                  onClick={() => applyPreset(p.months)}
+                  className={`px-2.5 py-1 text-xs font-mono rounded transition-colors ${
+                    activePreset === p.label
+                      ? 'bg-pine text-paper'
+                      : 'text-stone hover:text-summit-ink hover:bg-mist'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-        <PerformanceChart data={perf.timeseries.filter((pt) => {
-          if (startDate && pt.date < startDate) return false
-          if (endDate && pt.date > endDate) return false
-          return true
-        })} />
+        <PerformanceChart
+          data={filteredTimeseries}
+          benchmark={filteredBenchmark}
+          benchmarkTicker={benchmarkTicker}
+        />
+        {benchmarkData?.warning && (
+          <p className="text-xs font-mono text-stone/50 mt-2 text-right">
+            Benchmark unavailable: {benchmarkData.warning}
+          </p>
+        )}
       </section>
 
       {/* TWR vs MWR returns series */}
@@ -244,16 +358,21 @@ export function PerformancePage() {
                 <span className="inline-block w-6 border-t-2 border-dashed border-gold" />
                 MWR
               </span>
+              {filteredSeries.some((pt) => pt.benchmark_cumul != null) && (
+                <span className="flex items-center gap-1.5">
+                  <span className="inline-block w-6 border-t-2 border-dashed border-loss" />
+                  {benchmarkTicker}
+                </span>
+              )}
             </div>
           </div>
           <p className="text-xs text-stone/60 mb-4">
-            Weekly snapshots since inception · solid = time-weighted · dashed = money-weighted
+            All lines rebased to 0% at the start of the selected period · lifetime returns shown in the hero above
           </p>
-          <ReturnsSeriesChart data={returnsSeries.series.filter((pt) => {
-            if (startDate && pt.date < startDate) return false
-            if (endDate && pt.date > endDate) return false
-            return true
-          })} />
+          <ReturnsSeriesChart
+            data={filteredSeries ?? []}
+            benchmarkTicker={benchmarkTicker}
+          />
         </section>
       )}
 

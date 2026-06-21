@@ -1097,6 +1097,40 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/benchmarks/{ticker}/performance:
+    get:
+      tags: [benchmarks]
+      summary: Fetch historical benchmark performance for a ticker
+      operationId: getBenchmarkPerformance
+      parameters:
+        - name: ticker
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Market ticker symbol (e.g. SPY, QQQ, ^GSPC)
+        - name: start_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: end_date
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        "200":
+          description: Benchmark timeseries (empty with warning if data unavailable)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BenchmarkResponse"
+        "422":
+          description: Invalid ticker symbol
+
 # ─── Components ───────────────────────────────────────────────────────────────
 
 components:
@@ -1952,3 +1986,27 @@ components:
         created_at:
           type: string
           format: date-time
+
+    BenchmarkPoint:
+      type: object
+      required: [date, close]
+      properties:
+        date:
+          type: string
+          format: date
+        close:
+          type: number
+
+    BenchmarkResponse:
+      type: object
+      required: [ticker, timeseries]
+      properties:
+        ticker:
+          type: string
+        timeseries:
+          type: array
+          items:
+            $ref: "#/components/schemas/BenchmarkPoint"
+        warning:
+          type: string
+          nullable: true
